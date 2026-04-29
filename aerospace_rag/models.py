@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +20,18 @@ class Chunk:
     def to_payload(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["text"] = self.text
+        payload["source_type"] = self.metadata.get("source_type", "document")
         payload["source_doc"] = self.source_file
         payload["source_doc_id"] = self.source_file
         payload["doc_id"] = self.source_file
         payload["canonical_doc_id"] = self.source_file
         payload["canonical_chunk_id"] = self.chunk_id
         payload["tier"] = "public"
+        payload["created_at"] = self.metadata.get("created_at", datetime.now(timezone.utc).isoformat())
+        payload["asset_ref"] = self.metadata.get("asset_ref")
+        payload["table_html_ref"] = self.metadata.get("table_html_ref")
+        payload["image_b64_ref"] = self.metadata.get("image_b64_ref")
+        payload["formula_latex_ref"] = self.metadata.get("formula_latex_ref")
         return payload
 
     @classmethod

@@ -9,6 +9,7 @@ from .bm25 import BM25Index
 from .config import Settings
 from .graph_store import GraphStore
 from .models import Chunk, RetrievalHit
+from .private_overlay import PrivateOverlayStore
 from .runtime_dat import resolve_channel_weights
 from .vector_store import COLLECTION_NAME, QdrantVectorStore
 
@@ -58,7 +59,14 @@ class LocalIndex:
             vectors.close()
         self.graph.build(chunks, reset=reset)
 
-    def search(self, query: str, *, top_k: int = 8) -> list[RetrievalHit]:
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 8,
+        farm_id: str = "default",
+        include_private: bool = False,
+    ) -> list[RetrievalHit]:
         chunks = {chunk.chunk_id: chunk for chunk in read_chunks(self.chunks_path)}
         channel_scores: dict[str, dict[str, float]] = {
             "qdrant": {},
@@ -84,6 +92,7 @@ class LocalIndex:
         weights, dat_diag = resolve_channel_weights(
             query,
             profile_path=self.settings.fusion_profile_path,
+            profile_meta_path=self.settings.fusion_profile_meta_path,
             mode=self.settings.dat_mode,
             min_weight=self.settings.dat_min_weight_per_channel,
             max_weight=self.settings.dat_max_weight_per_channel,
@@ -103,11 +112,21 @@ class LocalIndex:
             hits.append(RetrievalHit(chunk=chunk, score=float(score), channels=dict(per_chunk_channels[chunk_id])))
             if len(hits) >= top_k:
                 break
+        private_hits: list[RetrievalHit] = []
+        if include_private:
+            overlay = PrivateOverlayStore(self.settings.private_store_db_path)
+            private_hits = overlay.search(query=query, farm_id=farm_id, limit=top_k)
+            hits = sorted(hits + private_hits, key=lambda hit: hit.score, reverse=True)[:top_k]
         self.last_diagnostics = {
             "fusion": {
                 "channel_weights": weights,
                 "channel_enabled": {channel: bool(scores) for channel, scores in channel_scores.items()},
                 **dat_diag,
+            },
+            "private": {
+                "farm_id": farm_id,
+                "include_private": bool(include_private),
+                "private_overlay_hits": len(private_hits),
             },
             "embedding_provider": getattr(vectors.embeddings, "provider_name", "unknown"),
             "embedding_model": self.settings.embed_model,

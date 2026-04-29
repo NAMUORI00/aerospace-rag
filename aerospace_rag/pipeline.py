@@ -18,12 +18,14 @@ def build_index(
     data_dir: str | Path = "data",
     index_dir: str | Path = DEFAULT_INDEX_DIR,
     reset: bool = True,
+    strict_expected: bool = True,
+    include_extra: bool = False,
     settings: Settings | None = None,
 ) -> BuildResult:
     resolved_settings = settings or Settings.from_env()
     data_path = Path(data_dir)
     index_path = Path(index_dir)
-    chunks = ingest_data(data_path)
+    chunks = ingest_data(data_path, strict_expected=strict_expected, include_extra=include_extra)
     index = LocalIndex(index_path, settings=resolved_settings)
     index.build(chunks, reset=reset)
     return BuildResult(
@@ -45,13 +47,23 @@ def ask(
     top_k: int = 8,
     provider: str | None = None,
     debug: bool = False,
+    farm_id: str = "default",
+    include_private: bool = False,
     settings: Settings | None = None,
 ) -> QueryResponse:
     resolved_settings = settings or Settings.from_env()
     if provider is None:
         provider = resolved_settings.llm_provider or "extractive"
     index = LocalIndex(index_dir, settings=resolved_settings)
-    hits = index.search(question, top_k=top_k)
+    hits = index.search(question, top_k=top_k, farm_id=farm_id, include_private=include_private)
+    private_present = any(str(hit.chunk.metadata.get("tier") or "").lower() == "private" for hit in hits)
+    if (
+        private_present
+        and provider == "openai_compatible"
+        and resolved_settings.private_llm_policy == "local_only"
+        and not resolved_settings.allow_dev_remote_private
+    ):
+        provider = "extractive"
     answer = generate_answer(question, hits, provider=provider, settings=resolved_settings)
     sources = [
         SourceRef(
@@ -75,9 +87,16 @@ def ask(
             "provider": provider,
             **index.last_diagnostics,
         }
+        diagnostics["private_present"] = private_present
     return QueryResponse(
         answer=answer,
         sources=sources,
-        routing={"provider": provider, "retrieval": "qdrant+bm25+falkordb"},
+        routing={
+            "provider": provider,
+            "retrieval": "qdrant+bm25+falkordb",
+            "farm_id": farm_id,
+            "include_private": bool(include_private),
+            "private_present": private_present,
+        },
         diagnostics=diagnostics,
     )

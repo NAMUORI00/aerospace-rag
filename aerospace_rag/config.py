@@ -22,6 +22,9 @@ class Settings:
     vllm_base_url: str = ""
     vllm_api_key: str = "local-dummy"
     openai_compat_model: str = ""
+    private_store_db_path: Path = Path("data/kb/private_overlay.sqlite")
+    private_llm_policy: str = "local_only"
+    allow_dev_remote_private: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +45,8 @@ class Settings:
             vllm_base_url=os.environ.get("VLLM_BASE_URL", os.environ.get("OPENAI_COMPAT_BASE_URL", "")),
             vllm_api_key=os.environ.get("VLLM_API_KEY", os.environ.get("OPENAI_COMPAT_API_KEY", "local-dummy")),
             openai_compat_model=os.environ.get("OPENAI_COMPAT_MODEL", ""),
+            private_store_db_path=Path(os.environ.get("PRIVATE_STORE_DB_PATH", "data/kb/private_overlay.sqlite")),
+            private_llm_policy=os.environ.get("PRIVATE_LLM_POLICY", "local_only"),
+            allow_dev_remote_private=os.environ.get("ALLOW_DEV_REMOTE_PRIVATE", "false").lower()
+            in {"1", "true", "yes", "on"},
         )

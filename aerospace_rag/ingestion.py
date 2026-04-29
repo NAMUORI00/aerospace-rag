@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 from typing import Iterable
 
+from .document_parser import DocumentParser, ParsedChunk
 from .models import Chunk
 from .text import normalize_text
 
@@ -15,6 +16,8 @@ EXPECTED_FILES = [
     "인공위성_질문응답.xlsx",
     "해외정부 우주항공 현황.png",
 ]
+
+SUPPORTED_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".md"}
 
 
 SATELLITE_PRICE_TABLE = """| 구분 | 위성/모드 | 해상도(m) | 저장영상(AO) | 신규촬영(NTO) |
@@ -49,6 +52,12 @@ def _require_expected_files(data_dir: Path) -> None:
     if missing:
         formatted = ", ".join(missing)
         raise FileNotFoundError(f"missing required data files: {formatted}")
+
+
+def iter_supported_files(root: Path) -> Iterable[Path]:
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES:
+            yield path
 
 
 def _ingest_pdf(path: Path) -> Iterable[Chunk]:
@@ -130,19 +139,65 @@ def _ingest_known_png(path: Path) -> Chunk:
     )
 
 
-def ingest_data(data_dir: str | Path) -> list[Chunk]:
-    root = Path(data_dir)
-    _require_expected_files(root)
+def _chunk_from_parsed(path: Path, parsed: ParsedChunk) -> Chunk:
+    metadata = dict(parsed.metadata or {})
+    modality = str(metadata.get("modality") or "text")
+    return Chunk(
+        chunk_id=f"{parsed.chunk_id}-{_stable_id(path.name, parsed.chunk_id, parsed.text[:120])}",
+        text=parsed.text,
+        source_file=path.name,
+        modality=modality,
+        page=metadata.get("page"),
+        sheet=metadata.get("sheet"),
+        row=metadata.get("row"),
+        metadata={
+            key: value
+            for key, value in metadata.items()
+            if key not in {"page", "sheet", "row", "modality"}
+        },
+    )
+
+
+def _ingest_generic_files(paths: Iterable[Path]) -> list[Chunk]:
+    parser = DocumentParser(
+        image_text_overrides={
+            "위성영상가격.png": SATELLITE_PRICE_TABLE,
+            "해외정부 우주항공 현황.png": GOVERNMENT_AEROSPACE_TABLE,
+        }
+    )
     chunks: list[Chunk] = []
-    for name in EXPECTED_FILES:
-        path = root / name
-        suffix = path.suffix.lower()
-        if suffix == ".pdf":
-            chunks.extend(_ingest_pdf(path))
-        elif suffix == ".xlsx":
-            chunks.extend(_ingest_xlsx(path))
-        elif suffix == ".png":
-            chunks.append(_ingest_known_png(path))
-        else:
-            raise ValueError(f"unsupported input file: {path.name}")
+    for path in paths:
+        for parsed in parser.parse_file(path):
+            chunks.append(_chunk_from_parsed(path, parsed))
+    return chunks
+
+
+def ingest_data(
+    data_dir: str | Path,
+    *,
+    strict_expected: bool = True,
+    include_extra: bool = False,
+) -> list[Chunk]:
+    root = Path(data_dir)
+    chunks: list[Chunk] = []
+    expected_paths = [root / name for name in EXPECTED_FILES]
+    if strict_expected:
+        _require_expected_files(root)
+        for path in expected_paths:
+            suffix = path.suffix.lower()
+            if suffix == ".pdf":
+                chunks.extend(_ingest_pdf(path))
+            elif suffix == ".xlsx":
+                chunks.extend(_ingest_xlsx(path))
+            elif suffix == ".png":
+                chunks.append(_ingest_known_png(path))
+            else:
+                raise ValueError(f"unsupported input file: {path.name}")
+    else:
+        chunks.extend(_ingest_generic_files(iter_supported_files(root)))
+
+    if strict_expected and include_extra:
+        expected_names = {path.name for path in expected_paths}
+        extra_paths = [path for path in iter_supported_files(root) if path.name not in expected_names]
+        chunks.extend(_ingest_generic_files(extra_paths))
     return chunks
