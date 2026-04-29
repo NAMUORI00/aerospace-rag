@@ -16,14 +16,14 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _resolve_source_root(*, explicit: Path | None, manifest_root: str, fallback_dir: Path, label: str) -> Path:
+def _resolve_source_root(*, explicit: Path | None, manifest_root: str, alternate_dir: Path, label: str) -> Path:
     if explicit is not None:
         return explicit.resolve()
     candidate = Path(str(manifest_root or "")).expanduser()
     if candidate.exists():
         return candidate.resolve()
-    if fallback_dir.exists():
-        return fallback_dir.resolve()
+    if alternate_dir.exists():
+        return alternate_dir.resolve()
     raise FileNotFoundError(f"cannot resolve source root for {label}: {manifest_root!r}")
 
 
@@ -78,7 +78,7 @@ def import_artifact_manifest(
     }
     targets = {
         "qdrant": index_dir / "qdrant",
-        "falkordb": index_dir / "falkordb",
+        "graph": index_dir / "graph",
         "bm25": index_dir,
         "chunks": index_dir,
     }
@@ -98,7 +98,7 @@ def import_artifact_manifest(
         source_root = _resolve_source_root(
             explicit=overrides.get(label),
             manifest_root=str(block.get("root") or ""),
-            fallback_dir=manifest_path.parent / label,
+            alternate_dir=manifest_path.parent / label,
             label=label,
         )
         copied = _copy_entries(
@@ -120,7 +120,7 @@ def main() -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--qdrant-source-dir", default="")
-    parser.add_argument("--falkordb-source-dir", default="")
+    parser.add_argument("--graph-source-dir", default="")
     parser.add_argument("--bm25-source-dir", default="")
     parser.add_argument("--chunks-source-dir", default="")
     parser.add_argument("--skip-sha256-check", action="store_true")
@@ -128,7 +128,7 @@ def main() -> int:
 
     overrides = {
         "qdrant": Path(args.qdrant_source_dir) if str(args.qdrant_source_dir).strip() else None,
-        "falkordb": Path(args.falkordb_source_dir) if str(args.falkordb_source_dir).strip() else None,
+        "graph": Path(args.graph_source_dir) if str(args.graph_source_dir).strip() else None,
         "bm25": Path(args.bm25_source_dir) if str(args.bm25_source_dir).strip() else None,
         "chunks": Path(args.chunks_source_dir) if str(args.chunks_source_dir).strip() else None,
     }

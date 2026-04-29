@@ -50,7 +50,7 @@ def build_artifact_manifest(
 
     blocks = {
         "qdrant": index_dir / "qdrant",
-        "falkordb": index_dir / "falkordb",
+        "graph": index_dir / "graph",
     }
     files = {
         "bm25": index_dir / "bm25.json",
@@ -79,7 +79,7 @@ def build_artifact_manifest(
             "embedding_model": resolved_settings.embed_model,
             "embedding_dim": resolved_settings.embed_dim,
             "qdrant_collection": COLLECTION_NAME,
-            "dat_mode": resolved_settings.dat_mode,
+            "fusion_policy": "core_static",
         },
     }
     payload = json.dumps(manifest, ensure_ascii=False, sort_keys=True)

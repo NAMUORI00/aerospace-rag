@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,21 +13,22 @@ from aerospace_rag.models import Chunk
 from aerospace_rag.retrieval.extraction import KnowledgeExtractor
 from aerospace_rag.retrieval.fusion import ChannelHit, resolve_enterprise_weights, weighted_rrf
 from aerospace_rag.stores.graph import GraphStore
-from aerospace_rag.stores.local_index import LocalIndex
 from aerospace_rag.stores.vector import QdrantVectorStore
 
 
 class EnterpriseRagTests(unittest.TestCase):
-    def test_generation_provider_is_fixed_to_ollama_for_llm_aliases(self) -> None:
+    def test_generation_provider_rejects_non_core_provider_aliases(self) -> None:
         settings = Settings(llm_provider="extractive")
 
-        for provider in [None, "ollama", "local", "openai_compatible", "gemma4_openai", "vllm", "remote"]:
-            self.assertEqual(route_generation_provider(provider, private_present=False, settings=settings), "ollama")
-            self.assertEqual(route_generation_provider(provider, private_present=True, settings=settings), "ollama")
+        for provider in [None, "ollama"]:
+            self.assertEqual(route_generation_provider(provider, settings=settings), "ollama")
 
-        self.assertEqual(route_generation_provider("extractive", private_present=False, settings=settings), "extractive")
+        self.assertEqual(route_generation_provider("extractive", settings=settings), "extractive")
+        for provider in ["local", "openai_compatible", "gemma4_openai", "vllm", "remote"]:
+            with self.assertRaisesRegex(ValueError, "provider"):
+                route_generation_provider(provider, settings=settings)
 
-    def test_weighted_rrf_uses_qact_profile_and_evidence_adjustment(self) -> None:
+    def test_weighted_rrf_uses_static_core_weights_and_evidence_adjustment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             profile = Path(tmp) / "fusion_weights.runtime.json"
             meta = Path(tmp) / "fusion_profile_meta.runtime.json"
@@ -64,21 +66,27 @@ class EnterpriseRagTests(unittest.TestCase):
                 return_debug=True,
             )
 
-        self.assertEqual(diagnostics["weights_source"], "profile")
-        self.assertEqual(diagnostics["candidate_depth"], 42)
+        self.assertEqual(diagnostics["weights_source"], "static")
+        self.assertNotIn("fusion_profile_id", diagnostics)
         self.assertIn("graph_no_evidence", diagnostics["evidence_adjustments"])
         self.assertEqual(weights["graph"], 0.0)
         self.assertEqual(ranked[0].chunk_id, "shared-doc")
         self.assertIn("top_doc_channel_contributions", debug)
         self.assertGreater(
-            debug["top_doc_channel_contributions"]["shared-doc"]["vector_sparse"],
             debug["top_doc_channel_contributions"]["shared-doc"]["vector_dense_text"],
+            debug["top_doc_channel_contributions"]["shared-doc"]["vector_sparse"],
         )
 
-    def test_vector_store_fallback_has_dense_sparse_image_channels_and_metadata(self) -> None:
+    def test_vector_store_requires_qdrant_unless_json_debug_mode_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings = Settings(embed_backend="hash", embed_dim=384)
-            store = QdrantVectorStore(Path(tmp) / "index", settings=settings, force_fallback=True)
+            with patch.dict(sys.modules, {"qdrant_client": None}):
+                with self.assertRaisesRegex(RuntimeError, "qdrant-client"):
+                    QdrantVectorStore(Path(tmp) / "index", settings=Settings(embed_backend="hash"))
+
+    def test_vector_store_explicit_json_debug_mode_has_dense_sparse_image_channels_and_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(embed_backend="hash", embed_dim=384, vector_backend="json")
+            store = QdrantVectorStore(Path(tmp) / "index", settings=settings)
             chunk = Chunk(
                 chunk_id="doc#1",
                 text="NASA Momentus solar sail demonstration",
@@ -88,8 +96,8 @@ class EnterpriseRagTests(unittest.TestCase):
             )
 
             store.build([chunk])
-            channels = store.search_channels("NASA solar sail", limit=5, farm_id="tenant-a", include_private=False)
-            payload = json.loads(store.fallback_path.read_text(encoding="utf-8"))[0]["payload"]
+            channels = store.search_channels("NASA solar sail", limit=5)
+            payload = json.loads(store.json_path.read_text(encoding="utf-8"))[0]["payload"]
 
         self.assertIn("vector_dense_text", channels)
         self.assertIn("vector_sparse", channels)
@@ -99,51 +107,21 @@ class EnterpriseRagTests(unittest.TestCase):
         self.assertEqual(payload["canonical_chunk_id"], "doc#1")
         self.assertEqual(payload["modality"], "image")
 
-    def test_graph_store_supports_private_scope_and_path_fallback(self) -> None:
+    def test_graph_store_uses_graph_lite_index_without_graph_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            graph = GraphStore(Path(tmp) / "index")
+            graph = GraphStore(Path(tmp) / "index", settings=Settings(extractor_provider="local_fallback"))
             graph.build(
                 [
                     Chunk("public#1", "NASA awarded Momentus a solar sail contract.", "public.pdf", "text"),
-                    Chunk(
-                        "private#1",
-                        "Tenant secret H3 launch risk memo.",
-                        "private:memo",
-                        "text",
-                        metadata={"tier": "private", "farm_id": "tenant-a", "source_type": "memo"},
-                    ),
                 ]
             )
 
-            public_hits = graph.search("H3 launch risk", farm_id="tenant-b", include_private=False, limit=5)
-            private_hits = graph.search("H3 launch risk", farm_id="tenant-a", include_private=True, limit=5)
+            hits = graph.search("NASA solar sail", limit=5)
 
-        self.assertNotIn("private#1", {chunk_id for chunk_id, _ in public_hits})
-        self.assertIn("private#1", {chunk_id for chunk_id, _ in private_hits})
-
-    def test_private_ingest_updates_overlay_vector_and_graph_indexes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            index_dir = Path(tmp) / "index"
-            settings = Settings(embed_backend="hash", private_store_db_path=Path(tmp) / "private.sqlite")
-            index = LocalIndex(index_dir, settings=settings)
-            index.build([Chunk("public#1", "NASA public contract memo", "public.md", "text")])
-
-            record_id = index.upsert_private_text(
-                text="Tenant A H3 launch customer risk memo",
-                farm_id="tenant-a",
-                source_type="memo",
-            )
-            response_hits = index.search(
-                "H3 customer risk",
-                farm_id="tenant-a",
-                include_private=True,
-                top_k=5,
-            )
-
-        self.assertTrue(record_id)
-        private_ids = {hit.chunk.chunk_id for hit in response_hits if hit.chunk.metadata.get("tier") == "private"}
-        self.assertIn(record_id, private_ids)
-        self.assertIn("private_overlay", index.last_diagnostics["private"]["channels"])
+        self.assertEqual(graph.index_path.name, "graph_index.json")
+        self.assertEqual(graph.index_path.parent.name, "graph")
+        self.assertFalse(graph.db_path.exists())
+        self.assertIn("public#1", {chunk_id for chunk_id, _ in hits})
 
     def test_ollama_extractor_accepts_fenced_json_response(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")

@@ -11,8 +11,6 @@ def main() -> int:
     parser.add_argument("question")
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--top-k", type=int, default=8)
-    parser.add_argument("--farm-id", default="default")
-    parser.add_argument("--include-private", action="store_true")
     parser.add_argument(
         "--provider",
         choices=["extractive", "ollama"],
@@ -27,8 +25,6 @@ def main() -> int:
         top_k=args.top_k,
         provider=args.provider,
         debug=args.debug,
-        farm_id=args.farm_id,
-        include_private=bool(args.include_private),
     )
     safe_print(response.answer)
     safe_print("\nSources:")

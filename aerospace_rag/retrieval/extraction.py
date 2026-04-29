@@ -161,23 +161,24 @@ def extract_entity_texts(chunk: Chunk) -> list[str]:
 
 
 class KnowledgeExtractor:
-    """Knowledge extractor with an Ollama-only LLM path and deterministic fallback."""
+    """Knowledge extractor with Ollama by default and explicit local debug mode."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
 
     def extract(self, chunk: Chunk) -> ExtractionResult:
-        if str(self.settings.extractor_provider or "").lower() == "ollama":
-            extracted = self._extract_with_ollama(chunk)
-            if extracted is not None:
-                return extracted
-        return self._extract_deterministic(chunk)
+        provider = str(self.settings.extractor_provider or "ollama").strip().lower()
+        if provider == "ollama":
+            return self._extract_with_ollama(chunk)
+        if provider in {"local", "local_fallback", "debug_local"}:
+            return self._extract_local_debug(chunk)
+        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'ollama' or explicit debug mode 'local_fallback'.")
 
-    def _extract_with_ollama(self, chunk: Chunk) -> ExtractionResult | None:
+    def _extract_with_ollama(self, chunk: Chunk) -> ExtractionResult:
         base_url = str(self.settings.ollama_base_url or "").strip().rstrip("/")
         model = str(self.settings.ollama_model or "").strip()
         if not base_url or not model:
-            return None
+            raise RuntimeError("Ollama extraction requires OLLAMA_BASE_URL and OLLAMA_MODEL.")
         prompt = (
             "Extract aerospace RAG knowledge as strict JSON with keys entities and relations. "
             "Entity fields: canonical_id,text,type,confidence. "
@@ -206,8 +207,11 @@ class KnowledgeExtractor:
                 body = json.loads(response.read().decode("utf-8"))
             content = str(((body.get("message") or {}).get("content")) or "")
             parsed = parse_llm_json_object(content)
-        except Exception:
-            return None
+        except Exception as exc:
+            raise RuntimeError(
+                "Ollama knowledge extraction failed. Start Ollama, pull the configured model, "
+                "or explicitly set EXTRACTOR_LLM_BACKEND=local_fallback for debug indexing."
+            ) from exc
         entities = []
         for item in parsed.get("entities") or []:
             if not isinstance(item, dict):
@@ -241,11 +245,9 @@ class KnowledgeExtractor:
                     evidence=str(item.get("evidence") or chunk.chunk_id),
                 )
             )
-        if not entities:
-            return None
         return ExtractionResult(entities=entities[:64], relations=relations[:128])
 
-    def _extract_deterministic(self, chunk: Chunk) -> ExtractionResult:
+    def _extract_local_debug(self, chunk: Chunk) -> ExtractionResult:
         entity_texts = extract_entity_texts(chunk)
         entities = [
             ExtractedEntity(

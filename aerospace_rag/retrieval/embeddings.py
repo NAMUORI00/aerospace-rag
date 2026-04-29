@@ -15,12 +15,14 @@ def _normalize(vector: list[float]) -> list[float]:
 class EmbeddingService:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
-        self.provider_name = "hash"
-        self.vector_size = 384
+        backend = str(self.settings.embed_backend or "sentence_transformers").strip().lower()
         self._model = None
-        if self.settings.embed_backend == "hash":
+        if backend == "hash":
+            self.provider_name = "hash"
             self.vector_size = 384
             return
+        if backend != "sentence_transformers":
+            raise ValueError("AEROSPACE_EMBED_BACKEND must be 'sentence_transformers' or explicit debug mode 'hash'.")
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -28,10 +30,12 @@ class EmbeddingService:
             dim = int(getattr(self._model, "get_sentence_embedding_dimension", lambda: self.settings.embed_dim)())
             self.vector_size = dim or self.settings.embed_dim
             self.provider_name = "sentence_transformers"
-        except Exception:
-            self._model = None
-            self.vector_size = 384
-            self.provider_name = "hash"
+        except Exception as exc:
+            raise RuntimeError(
+                "sentence-transformers embedding is required by default. "
+                "Install model dependencies with `pip install -r requirements-models.txt`, "
+                "or explicitly set AEROSPACE_EMBED_BACKEND=hash for debug runs."
+            ) from exc
 
     def embed_texts(self, texts: Iterable[str]) -> list[list[float]]:
         batch = list(texts)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ from aerospace_rag.config import Settings
 from aerospace_rag.generation.providers import generate_answer
 from aerospace_rag.models import Chunk, RetrievalHit
 from aerospace_rag.retrieval.embeddings import EmbeddingService
+from aerospace_rag.retrieval.extraction import KnowledgeExtractor
 from aerospace_rag.retrieval.weights import resolve_channel_weights
 
 
@@ -19,11 +21,13 @@ class RuntimeContractTests(unittest.TestCase):
             settings = Settings.from_env()
 
         self.assertEqual(settings.embed_model, "BAAI/bge-m3")
+        self.assertEqual(settings.vector_backend, "qdrant")
         self.assertEqual(settings.llm_provider, "ollama")
         self.assertEqual(settings.ollama_model, "gemma4:e2b")
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
         self.assertEqual(settings.ollama_api_key, "")
-        self.assertEqual(settings.dat_mode, "hybrid")
+        self.assertEqual(settings.extractor_provider, "ollama")
+        self.assertFalse(hasattr(settings, "dat_mode"))
 
         with patch.dict(os.environ, {"LLM_PROVIDER": "extractive"}, clear=True):
             self.assertEqual(Settings.from_env().llm_provider, "ollama")
@@ -31,7 +35,12 @@ class RuntimeContractTests(unittest.TestCase):
         with patch.dict(os.environ, {"OLLAMA_API_KEY": "test-token"}, clear=True):
             self.assertEqual(Settings.from_env().ollama_api_key, "test-token")
 
-    def test_embedding_service_can_fall_back_without_changing_callers(self) -> None:
+    def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:
+        with patch.dict(sys.modules, {"sentence_transformers": None}):
+            with self.assertRaisesRegex(RuntimeError, "requirements-models.txt"):
+                EmbeddingService(Settings(embed_backend="sentence_transformers"))
+
+    def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)
         service = EmbeddingService(settings)
 
@@ -41,7 +50,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(len(vectors), 2)
         self.assertEqual(len(vectors[0]), 384)
 
-    def test_dat_resolver_downweights_graph_for_non_entity_query(self) -> None:
+    def test_weight_resolver_uses_static_core_weights_without_runtime_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing-profile.json"
 
@@ -52,10 +61,10 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
         self.assertLess(weights["graph"], weights["qdrant"])
-        self.assertEqual(diagnostics["weights_source"], "default_fallback")
+        self.assertEqual(diagnostics["weights_source"], "static")
         self.assertIn("query_segment", diagnostics)
 
-    def test_ollama_provider_falls_back_to_extractive_when_server_unavailable(self) -> None:
+    def test_ollama_provider_raises_when_server_unavailable(self) -> None:
         chunk = Chunk(
             chunk_id="c1",
             text="Ollama gemma4:e2b는 Colab에서 임시 LLM으로 사용할 수 있다.",
@@ -64,14 +73,25 @@ class RuntimeContractTests(unittest.TestCase):
         )
         hit = RetrievalHit(chunk=chunk, score=1.0, channels={"qdrant": 1.0})
 
-        answer = generate_answer(
-            "Ollama 기본 모델은?",
-            [hit],
-            provider="ollama",
-            settings=Settings(ollama_base_url="http://127.0.0.1:1", ollama_model="gemma4:e2b"),
-        )
+        with self.assertRaisesRegex(RuntimeError, "Ollama"):
+            generate_answer(
+                "Ollama 기본 모델은?",
+                [hit],
+                provider="ollama",
+                settings=Settings(ollama_base_url="http://127.0.0.1:1", ollama_model="gemma4:e2b"),
+            )
 
-        self.assertIn("gemma4:e2b", answer)
+    def test_ollama_knowledge_extractor_raises_without_explicit_local_debug_mode(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+
+        with self.assertRaisesRegex(RuntimeError, "Ollama"):
+            KnowledgeExtractor(
+                settings=Settings(
+                    ollama_base_url="http://127.0.0.1:1",
+                    ollama_model="gemma4:e2b",
+                    extractor_provider="ollama",
+                )
+            ).extract(chunk)
 
 
 if __name__ == "__main__":

@@ -20,11 +20,7 @@ class ParsedChunk:
 
 
 class DocumentParser:
-    """Dependency-light document parser modeled after SmartFarm ingest.
-
-    It prefers optional `docling`, then `unstructured`, then dependency-light
-    Python fallbacks for the Colab/local deployment contract.
-    """
+    """Core document parser for Colab/local direct-call usage."""
 
     def __init__(self, *, image_text_overrides: dict[str, str] | None = None) -> None:
         self.chunk_token_size = 1200
@@ -35,7 +31,6 @@ class DocumentParser:
         self.languages = ["kor", "eng"]
         self.image_text_overrides = dict(image_text_overrides or {})
         self._docling_converter = self._build_docling()
-        self._converter = self._build_unstructured()
 
     def _build_docling(self):
         try:
@@ -46,13 +41,6 @@ class DocumentParser:
             return DocumentConverter()
         except Exception:
             return None
-
-    def _build_unstructured(self):
-        try:
-            from unstructured.partition.auto import partition
-        except Exception:
-            return None
-        return partition
 
     def _chunk_text(
         self,
@@ -118,22 +106,6 @@ class DocumentParser:
                 break
         return chunks
 
-    def _detect_modality(self, category: str) -> str:
-        c = str(category or "").lower()
-        if "table" in c:
-            return "table"
-        if "image" in c or "figure" in c or "picture" in c:
-            return "image"
-        if "formula" in c or "equation" in c or "math" in c:
-            return "formula"
-        return "text"
-
-    def _safe_attr(self, obj, name: str, default=None):
-        try:
-            return getattr(obj, name, default)
-        except Exception:
-            return default
-
     def _to_image_b64(self, value) -> str | None:
         if value is None:
             return None
@@ -142,56 +114,6 @@ class DocumentParser:
         if isinstance(value, (bytes, bytearray)):
             return base64.b64encode(bytes(value)).decode("utf-8")
         return None
-
-    def _parse_with_unstructured(self, path: Path) -> list[ParsedChunk]:
-        if self._converter is None:
-            return []
-        try:
-            elements = self._converter(
-                filename=str(path),
-                strategy=self.strategy,
-                extract_images_in_pdf=bool(self.extract_images),
-                infer_table_structure=bool(self.infer_table_structure),
-                languages=self.languages,
-            )
-        except Exception:
-            return []
-
-        chunks: list[ParsedChunk] = []
-        seed = 0
-        for idx, element in enumerate(elements or []):
-            text = str(self._safe_attr(element, "text", "") or "").strip()
-            category = str(self._safe_attr(element, "category", "") or "")
-            meta = self._safe_attr(element, "metadata", None)
-            modality = self._detect_modality(category)
-            page_no = None
-            table_html = None
-            formula_latex = None
-            image_b64 = None
-            if meta is not None:
-                page_no = self._safe_attr(meta, "page_number", None)
-                table_html = str(self._safe_attr(meta, "text_as_html", "") or "").strip() or None
-                formula_latex = str(self._safe_attr(meta, "text_as_latex", "") or "").strip() or None
-                image_b64 = self._to_image_b64(self._safe_attr(meta, "image_base64", None))
-            if not text:
-                text = table_html or formula_latex or ""
-            if not text:
-                continue
-            parsed = self._chunk_text(
-                doc_stem=path.stem,
-                text=text,
-                source_doc=path.name,
-                modality=modality,
-                asset_ref=f"page:{page_no}#idx:{idx}" if page_no else f"asset:{idx}",
-                chunk_index_seed=seed,
-                page=int(page_no) if page_no else None,
-                table_html_ref=table_html,
-                formula_latex_ref=formula_latex,
-                image_b64_ref=image_b64,
-            )
-            chunks.extend(parsed)
-            seed += len(parsed)
-        return chunks
 
     def _parse_with_docling(self, path: Path) -> list[ParsedChunk]:
         if self._docling_converter is None:
@@ -324,14 +246,15 @@ class DocumentParser:
 
     def parse_file(self, path: str | Path) -> list[ParsedChunk]:
         p = Path(path)
-        if p.suffix.lower() in {".pdf", ".docx", ".pptx"}:
+        suffix = p.suffix.lower()
+        if suffix in {".docx", ".pptx"}:
             parsed = self._parse_with_docling(p)
             if parsed:
                 return parsed
-            parsed = self._parse_with_unstructured(p)
-            if parsed:
-                return parsed
-        suffix = p.suffix.lower()
+            raise RuntimeError(
+                f"docling is required to parse {suffix} files. "
+                "Install model dependencies with `pip install -r requirements-models.txt`."
+            )
         if suffix == ".pdf":
             return self._parse_pdf(p)
         if suffix in {".xlsx", ".xlsm"}:

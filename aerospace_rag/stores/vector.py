@@ -27,17 +27,20 @@ class QdrantVectorStore:
         *,
         settings: Settings | None = None,
         embeddings: EmbeddingService | None = None,
-        force_fallback: bool = False,
+        force_json_debug: bool = False,
     ) -> None:
         self.settings = settings or Settings.from_env()
         self.embeddings = embeddings or EmbeddingService(self.settings)
         self.vector_size = self.embeddings.vector_size
         self.path = Path(index_dir) / "qdrant"
         self.path.mkdir(parents=True, exist_ok=True)
-        self.fallback_path = self.path / "fallback_vectors.json"
-        if force_fallback:
+        self.json_path = self.path / "vectors.json"
+        backend = str(self.settings.vector_backend or "qdrant").strip().lower()
+        if force_json_debug or backend == "json":
             self.client = None
             return
+        if backend != "qdrant":
+            raise ValueError("AEROSPACE_VECTOR_BACKEND must be 'qdrant' or explicit debug mode 'json'.")
         try:
             from qdrant_client import QdrantClient
 
@@ -47,8 +50,12 @@ class QdrantVectorStore:
                 self.client = QdrantClient(host=self.settings.qdrant_host, port=int(self.settings.qdrant_port))
             else:
                 self.client = QdrantClient(path=str(self.path))
-        except Exception:
-            self.client = None
+        except Exception as exc:
+            raise RuntimeError(
+                "qdrant-client is required for the core vector store. "
+                "Install requirements.txt or set AEROSPACE_VECTOR_BACKEND=json "
+                "only for explicit JSON debug runs."
+            ) from exc
 
     def close(self) -> None:
         close = getattr(self.client, "close", None)
@@ -57,9 +64,9 @@ class QdrantVectorStore:
 
     def build(self, chunks: list[Chunk], *, reset: bool = True) -> None:
         if self.client is None:
-            if reset and self.fallback_path.exists():
-                self.fallback_path.unlink()
-            self._fallback_upsert_chunks(chunks)
+            if reset and self.json_path.exists():
+                self.json_path.unlink()
+            self._json_upsert_chunks(chunks)
             return
 
         from qdrant_client import models
@@ -95,7 +102,7 @@ class QdrantVectorStore:
 
     def upsert_chunks(self, chunks: list[Chunk]) -> None:
         if self.client is None:
-            self._fallback_upsert_chunks(chunks)
+            self._json_upsert_chunks(chunks)
             return
         self.build(chunks, reset=False)
 
@@ -118,13 +125,13 @@ class QdrantVectorStore:
             values=[float(v) for v in sparse.get("values") or []],
         )
 
-    def _fallback_rows(self) -> list[dict]:
-        if not self.fallback_path.exists():
+    def _json_rows(self) -> list[dict]:
+        if not self.json_path.exists():
             return []
-        return list(json.loads(self.fallback_path.read_text(encoding="utf-8")))
+        return list(json.loads(self.json_path.read_text(encoding="utf-8")))
 
-    def _fallback_upsert_chunks(self, chunks: list[Chunk]) -> None:
-        rows = self._fallback_rows()
+    def _json_upsert_chunks(self, chunks: list[Chunk]) -> None:
+        rows = self._json_rows()
         by_chunk = {str((row.get("payload") or {}).get("chunk_id") or ""): row for row in rows}
         vectors = self.embeddings.embed_texts([chunk.text for chunk in chunks])
         for chunk, vector in zip(chunks, vectors):
@@ -141,8 +148,8 @@ class QdrantVectorStore:
                 },
                 "payload": payload,
             }
-        self.fallback_path.parent.mkdir(parents=True, exist_ok=True)
-        self.fallback_path.write_text(json.dumps(list(by_chunk.values()), ensure_ascii=False), encoding="utf-8")
+        self.json_path.parent.mkdir(parents=True, exist_ok=True)
+        self.json_path.write_text(json.dumps(list(by_chunk.values()), ensure_ascii=False), encoding="utf-8")
 
     def search(self, query: str, *, limit: int = 8) -> list[tuple[str, float]]:
         channels = self.search_channels(query, limit=limit)
@@ -154,43 +161,25 @@ class QdrantVectorStore:
         query: str,
         *,
         limit: int = 8,
-        farm_id: str = "default",
-        include_private: bool = False,
         modalities: set[str] | None = None,
     ) -> dict[str, list[tuple[str, float]]]:
         vector = self.embeddings.embed_text(query)
         if self.client is None:
-            return self._fallback_search_channels(
+            return self._json_search_channels(
                 query=query,
                 query_vector=vector,
                 limit=limit,
-                farm_id=farm_id,
-                include_private=include_private,
                 modalities=modalities,
             )
         return self._qdrant_search_channels(
             query=query,
             query_vector=vector,
             limit=limit,
-            farm_id=farm_id,
-            include_private=include_private,
             modalities=modalities,
         )
 
-    def _qdrant_filter(self, farm_id: str, *, include_private: bool, models):
-        if not include_private:
-            return models.Filter(must=[models.FieldCondition(key="tier", match=models.MatchValue(value="public"))])
-        return models.Filter(
-            should=[
-                models.FieldCondition(key="tier", match=models.MatchValue(value="public")),
-                models.Filter(
-                    must=[
-                        models.FieldCondition(key="tier", match=models.MatchValue(value="private")),
-                        models.FieldCondition(key="farm_id", match=models.MatchValue(value=farm_id)),
-                    ]
-                ),
-            ]
-        )
+    def _qdrant_filter(self, models):
+        return models.Filter(must=[models.FieldCondition(key="tier", match=models.MatchValue(value="public"))])
 
     def _qdrant_search_channels(
         self,
@@ -198,13 +187,11 @@ class QdrantVectorStore:
         query: str,
         query_vector: list[float],
         limit: int,
-        farm_id: str,
-        include_private: bool,
         modalities: set[str] | None,
     ) -> dict[str, list[tuple[str, float]]]:
         from qdrant_client import models
 
-        qfilter = self._qdrant_filter(farm_id, include_private=include_private, models=models)
+        qfilter = self._qdrant_filter(models)
         out: dict[str, list[tuple[str, float]]] = {
             "vector_dense_text": [],
             "vector_sparse": [],
@@ -217,18 +204,15 @@ class QdrantVectorStore:
         ):
             if modalities and channel == "vector_image" and "image" not in modalities:
                 continue
-            try:
-                response = self.client.query_points(
-                    collection_name=COLLECTION_NAME,
-                    query=query_value,
-                    using=using,
-                    query_filter=qfilter,
-                    limit=max(limit * 3, 20),
-                    with_payload=True,
-                )
-                points = response.points
-            except Exception:
-                points = []
+            response = self.client.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_value,
+                using=using,
+                query_filter=qfilter,
+                limit=max(limit * 3, 20),
+                with_payload=True,
+            )
+            points = response.points
             hits: list[tuple[str, float]] = []
             for point in points:
                 payload = dict(point.payload or {})
@@ -242,14 +226,10 @@ class QdrantVectorStore:
         self,
         payload: dict,
         *,
-        farm_id: str,
-        include_private: bool,
         modalities: set[str] | None,
     ) -> bool:
         tier = str(payload.get("tier") or "public").lower()
-        if tier == "private" and (not include_private or str(payload.get("farm_id") or "") != str(farm_id)):
-            return False
-        if tier != "private" and tier != "public":
+        if tier != "public":
             return False
         if modalities and str(payload.get("modality") or "text").lower() not in modalities:
             return False
@@ -262,17 +242,15 @@ class QdrantVectorStore:
             return 0.0
         return sum(qv * d.get(qi, 0.0) for qi, qv in q.items())
 
-    def _fallback_search_channels(
+    def _json_search_channels(
         self,
         *,
         query: str,
         query_vector: list[float],
         limit: int,
-        farm_id: str,
-        include_private: bool,
         modalities: set[str] | None,
     ) -> dict[str, list[tuple[str, float]]]:
-        rows = self._fallback_rows()
+        rows = self._json_rows()
         query_sparse = self._sparse_vector(query)
         out: dict[str, list[tuple[str, float]]] = {
             "vector_dense_text": [],
@@ -281,7 +259,7 @@ class QdrantVectorStore:
         }
         for row in rows:
             payload = dict(row.get("payload") or {})
-            if not self._passes_scope(payload, farm_id=farm_id, include_private=include_private, modalities=modalities):
+            if not self._passes_scope(payload, modalities=modalities):
                 continue
             chunk_id = str(payload.get("chunk_id") or "")
             vectors = dict(row.get("vectors") or {})
@@ -307,56 +285,3 @@ class QdrantVectorStore:
         qnorm = math.sqrt(sum(v * v for v in left)) or 1.0
         vnorm = math.sqrt(sum(v * v for v in right)) or 1.0
         return float(sum(a * b for a, b in zip(left, right)) / (qnorm * vnorm))
-
-    def _legacy_search(self, query: str, *, limit: int = 8) -> list[tuple[str, float]]:
-        vector = self.embeddings.embed_text(query)
-        if self.client is None:
-            channels = self._fallback_search_channels(
-                query=query,
-                query_vector=vector,
-                limit=limit,
-                farm_id="default",
-                include_private=False,
-                modalities=None,
-            )
-            return channels.get("vector_dense_text", [])
-        try:
-            results = self.client.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=vector,
-                limit=limit,
-                with_payload=True,
-            )
-        except AttributeError:
-            response = self.client.query_points(
-                collection_name=COLLECTION_NAME,
-                query=vector,
-                limit=limit,
-                with_payload=True,
-            )
-            results = response.points
-        hits: list[tuple[str, float]] = []
-        for point in results:
-            payload = dict(point.payload or {})
-            chunk_id = str(payload.get("chunk_id") or "")
-            if chunk_id:
-                hits.append((chunk_id, float(point.score)))
-        return hits
-
-    def _fallback_search(self, query_vector: list[float], *, limit: int) -> list[tuple[str, float]]:
-        if not self.fallback_path.exists():
-            return []
-        rows = json.loads(self.fallback_path.read_text(encoding="utf-8"))
-        qnorm = math.sqrt(sum(v * v for v in query_vector)) or 1.0
-        scored: list[tuple[str, float]] = []
-        for row in rows:
-            vector = [float(v) for v in row.get("vector") or []]
-            payload = dict(row.get("payload") or {})
-            chunk_id = str(payload.get("chunk_id") or "")
-            if not chunk_id or not vector:
-                continue
-            vnorm = math.sqrt(sum(v * v for v in vector)) or 1.0
-            score = sum(a * b for a, b in zip(query_vector, vector)) / (qnorm * vnorm)
-            scored.append((chunk_id, float(score)))
-        scored.sort(key=lambda item: item[1], reverse=True)
-        return scored[:limit]

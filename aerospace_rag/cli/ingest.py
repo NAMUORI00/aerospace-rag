@@ -37,7 +37,7 @@ def main() -> int:
     )
     print(
         f"indexed files={result.file_count} chunks={result.chunk_count} "
-        f"qdrant={result.qdrant_collection} falkordb={result.falkordb_path}"
+        f"qdrant={result.qdrant_collection} graph_index={result.graph_index_path}"
     )
     return 0
 

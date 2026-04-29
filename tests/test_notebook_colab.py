@@ -36,7 +36,7 @@ def ollama_runtime_source() -> str:
 def data_upload_source() -> str:
     nb = nbformat.read(NOTEBOOK, as_version=4)
     for cell in nb.cells:
-        if cell.cell_type == "code" and "DATA_DIR = PROJECT_ROOT" in cell.source:
+        if cell.cell_type == "code" and "DATA_FILES = list(iter_supported_files(DATA_DIR))" in cell.source:
             return cell.source
     raise AssertionError("data upload cell not found")
 
@@ -55,6 +55,22 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("ensure_dependencies", source)
         self.assertIn("ensure_ollama_runtime", source)
         self.assertIn("gemma4:e2b", source)
+        self.assertIn("ANSWER_PROVIDER", source)
+        self.assertIn("TOP_K", source)
+        self.assertIn("EXTRACTOR_LLM_BACKEND", source)
+        self.assertIn("LLM_NEEDED", source)
+        self.assertIn('EXTRACTOR_LLM_BACKEND = "ollama"', source)
+        self.assertIn('EMBED_BACKEND = "sentence_transformers"', source)
+        self.assertIn('VECTOR_BACKEND = "qdrant"', source)
+        self.assertIn("AEROSPACE_VECTOR_BACKEND", source)
+        self.assertIn("sentence_transformers", source)
+        self.assertIn("docling", source)
+        self.assertNotIn('EXTRACTOR_LLM_BACKEND = "deterministic"', source)
+        self.assertNotIn('"deterministic"', source)
+        self.assertNotIn("DAT_MODE", source)
+        self.assertNotIn("falkordb", source.lower())
+        self.assertNotIn("falkordb_path", source)
+        self.assertNotIn("return extractive evidence if the call fails", source)
         self.assertIn("OLLAMA_API_KEY", source)
         self.assertIn("OLLAMA_API_KEY_SET", source)
         self.assertIn("is_ollama_cloud_runtime", source)
@@ -74,8 +90,6 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("LocalIndex", source)
         self.assertIn("ACTUAL_RAG_QUESTIONS", source)
         self.assertIn("ACTUAL_RAG_RESULTS", source)
-        self.assertIn("actual_rag_results", source)
-        self.assertIn("REPRODUCIBILITY_REPORT", source)
         self.assertNotIn("/content/drive", source)
         self.assertNotIn("MyDrive", source)
         self.assertNotIn("google.colab import files, drive", source)
@@ -166,8 +180,12 @@ class NotebookColabTests(unittest.TestCase):
         previous_env = dict(os.environ)
         try:
             os.environ.pop("LLM_PROVIDER", None)
+            os.environ["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+            os.environ["OLLAMA_MODEL"] = "gemma4:e2b"
+            os.environ["OLLAMA_API_KEY"] = ""
             namespace = {
                 "IN_COLAB": True,
+                "LLM_NEEDED": True,
                 "os": os,
                 "shutil": FakeShutil,
                 "subprocess": fake_subprocess,
@@ -199,6 +217,7 @@ class NotebookColabTests(unittest.TestCase):
             project_root.mkdir()
             namespace = {
                 "PROJECT_ROOT": project_root,
+                "DATA_DIR": project_root / "data",
                 "IN_COLAB": True,
                 "files": FakeFiles,
                 "Path": Path,
@@ -230,6 +249,7 @@ class NotebookColabTests(unittest.TestCase):
             (project_root / "data" / "index" / "ignored.md").write_text("old index note", encoding="utf-8")
             namespace = {
                 "PROJECT_ROOT": project_root,
+                "DATA_DIR": project_root / "data",
                 "IN_COLAB": True,
                 "Path": Path,
                 "hashlib": __import__("hashlib"),
@@ -258,9 +278,9 @@ class NotebookColabTests(unittest.TestCase):
                 "## 1. 실행 환경 확인",
                 "## 2. 프로젝트 소스 확보",
                 "## 3. 의존성 설치와 버전 고정 확인",
-                "## 4. Ollama 런타임과 모델 준비",
-                "## 5. 데이터 파일 준비",
-                "## 6. 실행 설정 확정",
+                "## 4. 실행 설정 확정",
+                "## 5. Ollama 런타임과 모델 준비",
+                "## 6. 데이터 파일 준비",
                 "## 7. 수집/파싱 단독 확인",
                 "## 8. 인덱스 생성",
                 "## 9. 검색 단독 검증",
@@ -268,8 +288,6 @@ class NotebookColabTests(unittest.TestCase):
                 "## 11. 근거 확인",
                 "## 12. 반복 질문 예시",
                 "## 13. 실제 업무파일 RAG 검증",
-                "## 14. 재현성 리포트",
-                "## 15. 문제 해결 체크리스트",
             ],
         )
 

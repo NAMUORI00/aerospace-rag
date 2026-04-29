@@ -8,17 +8,20 @@ from ..models import RetrievalHit
 from ..text import excerpt
 
 
+class OllamaGenerationError(RuntimeError):
+    """Raised when the explicit Ollama generation path cannot produce an answer."""
+
+
 def route_generation_provider(
     provider: str | None,
     *,
-    private_present: bool,
     settings: Settings | None = None,
 ) -> str:
-    _ = (private_present, settings)
+    _ = settings
     requested = str(provider or "ollama").strip().lower()
-    if requested == "extractive":
-        return "extractive"
-    return "ollama"
+    if requested in {"ollama", "extractive"}:
+        return requested
+    raise ValueError("provider must be 'ollama' or explicit debug mode 'extractive'.")
 
 
 def _build_prompt(question: str, hits: list[RetrievalHit]) -> str:
@@ -43,6 +46,10 @@ def _extractive_answer(question: str, hits: list[RetrievalHit]) -> str:
 
 
 def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) -> str:
+    if not str(settings.ollama_base_url or "").strip():
+        raise OllamaGenerationError("Ollama generation requires OLLAMA_BASE_URL.")
+    if not str(settings.ollama_model or "").strip():
+        raise OllamaGenerationError("Ollama generation requires OLLAMA_MODEL.")
     url = settings.ollama_base_url.rstrip("/") + "/api/chat"
     headers = {"Content-Type": "application/json"}
     if settings.ollama_api_key:
@@ -65,9 +72,15 @@ def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) 
     try:
         with urllib.request.urlopen(req, timeout=180) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return str(((body.get("message") or {}).get("content")) or "").strip() or _extractive_answer(question, hits)
-    except Exception:
-        return _extractive_answer(question, hits)
+    except Exception as exc:
+        raise OllamaGenerationError(
+            "Ollama generation failed. Start Ollama, pull the configured model, "
+            "or call ask(..., provider='extractive') for no-LLM debugging."
+        ) from exc
+    answer = str(((body.get("message") or {}).get("content")) or "").strip()
+    if not answer:
+        raise OllamaGenerationError("Ollama returned an empty answer.")
+    return answer
 
 
 def generate_answer(
@@ -78,8 +91,7 @@ def generate_answer(
     settings: Settings | None = None,
 ) -> str:
     resolved_settings = settings or Settings.from_env()
-    private_present = any(str(hit.chunk.metadata.get("tier") or "").lower() == "private" for hit in hits)
-    provider = route_generation_provider(provider, private_present=private_present, settings=resolved_settings)
+    provider = route_generation_provider(provider, settings=resolved_settings)
     if provider == "ollama":
         return _ollama_answer(question, hits, resolved_settings)
     return _extractive_answer(question, hits)

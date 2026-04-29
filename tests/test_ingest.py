@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aerospace_rag.ingestion import EXPECTED_FILES, ingest_data, iter_supported_files
 
@@ -38,6 +40,16 @@ class IngestionTests(unittest.TestCase):
             names = [path.relative_to(data_dir).as_posix() for path in iter_supported_files(data_dir)]
 
         self.assertEqual(names, ["memo.md"])
+
+    def test_docx_ingest_requires_docling_without_parser_cascade(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            (data_dir / "manual.docx").write_bytes(b"not a real docx")
+
+            with patch.dict(sys.modules, {"docling": None}):
+                with self.assertRaisesRegex(RuntimeError, "docling"):
+                    ingest_data(data_dir)
 
     @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
     def test_ingest_data_creates_expected_modalities_and_metadata(self) -> None:

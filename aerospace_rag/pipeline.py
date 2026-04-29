@@ -34,7 +34,7 @@ def build_index(
         file_count=len({chunk.source_file for chunk in chunks}),
         chunk_count=len(chunks),
         qdrant_collection=COLLECTION_NAME,
-        falkordb_path=index.graph.db_path,
+        graph_index_path=index.graph.index_path,
         bm25_path=index.bm25_path,
         chunks_path=index.chunks_path,
     )
@@ -47,17 +47,14 @@ def ask(
     top_k: int = 8,
     provider: str | None = None,
     debug: bool = False,
-    farm_id: str = "default",
-    include_private: bool = False,
     settings: Settings | None = None,
 ) -> QueryResponse:
     resolved_settings = settings or Settings.from_env()
     if provider is None:
         provider = "ollama"
     index = LocalIndex(index_dir, settings=resolved_settings)
-    hits = index.search(question, top_k=top_k, farm_id=farm_id, include_private=include_private)
-    private_present = any(str(hit.chunk.metadata.get("tier") or "").lower() == "private" for hit in hits)
-    provider = route_generation_provider(provider, private_present=private_present, settings=resolved_settings)
+    hits = index.search(question, top_k=top_k)
+    provider = route_generation_provider(provider, settings=resolved_settings)
     answer = generate_answer(question, hits, provider=provider, settings=resolved_settings)
     sources = [
         SourceRef(
@@ -81,16 +78,12 @@ def ask(
             "provider": provider,
             **index.last_diagnostics,
         }
-        diagnostics["private_present"] = private_present
     return QueryResponse(
         answer=answer,
         sources=sources,
         routing={
             "provider": provider,
-            "retrieval": "qdrant+bm25+falkordb",
-            "farm_id": farm_id,
-            "include_private": bool(include_private),
-            "private_present": private_present,
+            "retrieval": "qdrant+bm25+graph-lite",
         },
         diagnostics=diagnostics,
     )
