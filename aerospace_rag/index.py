@@ -1,0 +1,7 @@
+from __future__ import annotations
+
+from .ingest import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
