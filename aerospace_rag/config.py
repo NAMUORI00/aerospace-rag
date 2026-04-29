@@ -16,15 +16,15 @@ class Settings:
     fusion_profile_meta_path: Path = Path("data/artifacts/fusion_profile_meta.runtime.json")
     dat_min_weight_per_channel: float = 0.10
     dat_max_weight_per_channel: float = 0.80
+    qdrant_host: str = ""
+    qdrant_port: int = 6333
+    qdrant_url: str = ""
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma4:e2b"
-    vllm_base_url: str = ""
-    vllm_api_key: str = "local-dummy"
-    openai_compat_model: str = ""
+    ollama_api_key: str = ""
+    extractor_provider: str = "deterministic"
     private_store_db_path: Path = Path("data/kb/private_overlay.sqlite")
-    private_llm_policy: str = "local_only"
-    allow_dev_remote_private: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -39,14 +39,13 @@ class Settings:
             fusion_profile_meta_path=Path(os.environ.get("FUSION_PROFILE_META_PATH", "data/artifacts/fusion_profile_meta.runtime.json")),
             dat_min_weight_per_channel=float(os.environ.get("DAT_MIN_WEIGHT_PER_CHANNEL", "0.10")),
             dat_max_weight_per_channel=float(os.environ.get("DAT_MAX_WEIGHT_PER_CHANNEL", "0.80")),
-            llm_provider=os.environ.get("LLM_PROVIDER", "ollama"),
+            qdrant_host=os.environ.get("QDRANT_HOST", ""),
+            qdrant_port=int(os.environ.get("QDRANT_PORT", "6333")),
+            qdrant_url=os.environ.get("QDRANT_URL", ""),
+            llm_provider="ollama",
             ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_model=os.environ.get("OLLAMA_MODEL", os.environ.get("GEMMA4_MODEL", "gemma4:e2b")),
-            vllm_base_url=os.environ.get("VLLM_BASE_URL", os.environ.get("OPENAI_COMPAT_BASE_URL", "")),
-            vllm_api_key=os.environ.get("VLLM_API_KEY", os.environ.get("OPENAI_COMPAT_API_KEY", "local-dummy")),
-            openai_compat_model=os.environ.get("OPENAI_COMPAT_MODEL", ""),
+            ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
+            extractor_provider=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_PROVIDER", "deterministic")),
             private_store_db_path=Path(os.environ.get("PRIVATE_STORE_DB_PATH", "data/kb/private_overlay.sqlite")),
-            private_llm_policy=os.environ.get("PRIVATE_LLM_POLICY", "local_only"),
-            allow_dev_remote_private=os.environ.get("ALLOW_DEV_REMOTE_PRIVATE", "false").lower()
-            in {"1", "true", "yes", "on"},
         )

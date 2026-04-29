@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import Settings
-from .index_store import COLLECTION_NAME, LocalIndex
+from .stores.local_index import COLLECTION_NAME, LocalIndex
 from .ingestion import ingest_data
 from .models import BuildResult, QueryResponse, SourceRef
-from .providers import generate_answer
+from .generation.providers import generate_answer, route_generation_provider
 from .text import excerpt
 
 
@@ -18,7 +18,7 @@ def build_index(
     data_dir: str | Path = "data",
     index_dir: str | Path = DEFAULT_INDEX_DIR,
     reset: bool = True,
-    strict_expected: bool = True,
+    strict_expected: bool = False,
     include_extra: bool = False,
     settings: Settings | None = None,
 ) -> BuildResult:
@@ -53,17 +53,11 @@ def ask(
 ) -> QueryResponse:
     resolved_settings = settings or Settings.from_env()
     if provider is None:
-        provider = resolved_settings.llm_provider or "extractive"
+        provider = "ollama"
     index = LocalIndex(index_dir, settings=resolved_settings)
     hits = index.search(question, top_k=top_k, farm_id=farm_id, include_private=include_private)
     private_present = any(str(hit.chunk.metadata.get("tier") or "").lower() == "private" for hit in hits)
-    if (
-        private_present
-        and provider == "openai_compatible"
-        and resolved_settings.private_llm_policy == "local_only"
-        and not resolved_settings.allow_dev_remote_private
-    ):
-        provider = "extractive"
+    provider = route_generation_provider(provider, private_present=private_present, settings=resolved_settings)
     answer = generate_answer(question, hits, provider=provider, settings=resolved_settings)
     sources = [
         SourceRef(

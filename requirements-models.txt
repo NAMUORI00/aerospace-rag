@@ -1,2 +1,4 @@
 -r requirements.txt
 sentence-transformers>=3.0
+docling>=2.0
+unstructured>=0.10

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .ingest import main
+from .cli.ingest import main
 
 
 if __name__ == "__main__":

@@ -5,13 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aerospace_rag.artifact_export import build_artifact_manifest
-from aerospace_rag.artifact_import import import_artifact_manifest
-from aerospace_rag.graph_store import GraphStore
+from aerospace_rag.artifacts.export import build_artifact_manifest
+from aerospace_rag.artifacts.importer import import_artifact_manifest
 from aerospace_rag.models import Chunk
 from aerospace_rag.pipeline import ask, build_index
-from aerospace_rag.private_overlay import PrivateOverlayStore
-from aerospace_rag.runtime_dat import resolve_channel_weights
+from aerospace_rag.retrieval.weights import resolve_channel_weights
+from aerospace_rag.stores.graph import GraphStore
+from aerospace_rag.stores.private_overlay import PrivateOverlayStore
 
 
 class SmartFarmCorePortTests(unittest.TestCase):

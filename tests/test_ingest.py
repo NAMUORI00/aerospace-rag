@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 
-from aerospace_rag.ingestion import EXPECTED_FILES, ingest_data
+from aerospace_rag.ingestion import EXPECTED_FILES, ingest_data, iter_supported_files
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,29 @@ def has_private_dataset() -> bool:
 
 
 class IngestionTests(unittest.TestCase):
+    def test_ingest_data_defaults_to_supported_files_in_data_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            (data_dir / "memo.txt").write_text("NASA awarded Momentus a solar sail contract.", encoding="utf-8")
+
+            chunks = ingest_data(data_dir)
+
+        self.assertEqual({chunk.source_file for chunk in chunks}, {"memo.txt"})
+        self.assertTrue(any("Momentus" in chunk.text for chunk in chunks))
+
+    def test_iter_supported_files_ignores_index_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            (data_dir / "memo.md").write_text("source", encoding="utf-8")
+            (data_dir / "index").mkdir()
+            (data_dir / "index" / "old.md").write_text("generated", encoding="utf-8")
+
+            names = [path.relative_to(data_dir).as_posix() for path in iter_supported_files(data_dir)]
+
+        self.assertEqual(names, ["memo.md"])
+
     @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
     def test_ingest_data_creates_expected_modalities_and_metadata(self) -> None:
         chunks = ingest_data(DATA_DIR)

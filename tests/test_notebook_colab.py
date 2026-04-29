@@ -55,6 +55,9 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("ensure_dependencies", source)
         self.assertIn("ensure_ollama_runtime", source)
         self.assertIn("gemma4:e2b", source)
+        self.assertIn("OLLAMA_API_KEY", source)
+        self.assertIn("OLLAMA_API_KEY_SET", source)
+        self.assertIn("is_ollama_cloud_runtime", source)
         self.assertIn("GITHUB_REPO_URL", source)
         self.assertIn("https://github.com/NAMUORI00/aerospace-rag.git", source)
         self.assertIn("git clone", source)
@@ -64,8 +67,14 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("REPO_COMMIT", source)
         self.assertIn("file_sha256", source)
         self.assertIn("DATA_MANIFEST", source)
-        self.assertIn("ingest_data(DATA_DIR)", source)
+        self.assertIn("iter_supported_files", source)
+        self.assertIn("SUPPORTED_SUFFIXES", source)
+        self.assertIn("ingest_data(DATA_DIR, strict_expected=False)", source)
+        self.assertIn("strict_expected=False", source)
         self.assertIn("LocalIndex", source)
+        self.assertIn("ACTUAL_RAG_QUESTIONS", source)
+        self.assertIn("ACTUAL_RAG_RESULTS", source)
+        self.assertIn("actual_rag_results", source)
         self.assertIn("REPRODUCIBILITY_REPORT", source)
         self.assertNotIn("/content/drive", source)
         self.assertNotIn("MyDrive", source)
@@ -130,7 +139,7 @@ class NotebookColabTests(unittest.TestCase):
                 os.chdir(previous_cwd)
                 sys.path[:] = previous_sys_path
 
-    def test_colab_ollama_install_failure_falls_back_to_extractive_provider(self) -> None:
+    def test_colab_ollama_install_failure_keeps_fixed_ollama_provider(self) -> None:
         source = ollama_runtime_source()
 
         class FakeShutil:
@@ -168,15 +177,13 @@ class NotebookColabTests(unittest.TestCase):
 
             exec(source, namespace)
 
-            self.assertEqual(os.environ["LLM_PROVIDER"], "extractive")
+            self.assertNotIn("LLM_PROVIDER", os.environ)
             self.assertIn((["apt-get", "install", "-y", "zstd"], False), fake_subprocess.calls)
         finally:
             os.environ.clear()
             os.environ.update(previous_env)
 
     def test_colab_missing_data_creates_data_dir_and_prints_manual_copy_instruction(self) -> None:
-        from aerospace_rag.ingestion import EXPECTED_FILES
-
         source = data_upload_source()
 
         class FakeFiles:
@@ -206,10 +213,36 @@ class NotebookColabTests(unittest.TestCase):
             self.assertTrue((project_root / "data").is_dir())
             self.assertFalse(FakeFiles.called)
             self.assertIn(str(project_root / "data"), output)
-            self.assertIn("위 경로에 데이터 파일을 넣은 뒤 이 셀을 다시 실행하세요.", output)
-            for name in EXPECTED_FILES:
-                self.assertIn(name, output)
-                self.assertIn(name, str(raised.exception))
+            self.assertIn("지원 형식:", output)
+            self.assertIn(".pdf", output)
+            self.assertIn("위 경로에 지원 문서 파일을 넣은 뒤 이 셀을 다시 실행하세요.", output)
+            self.assertIn("지원되는 data 파일이 없습니다", str(raised.exception))
+
+    def test_colab_data_cell_discovers_supported_files(self) -> None:
+        source = data_upload_source()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "aerospace-rag"
+            docs_dir = project_root / "data" / "docs"
+            docs_dir.mkdir(parents=True)
+            (docs_dir / "memo.txt").write_text("Momentus solar sail memo", encoding="utf-8")
+            (project_root / "data" / "index").mkdir()
+            (project_root / "data" / "index" / "ignored.md").write_text("old index note", encoding="utf-8")
+            namespace = {
+                "PROJECT_ROOT": project_root,
+                "IN_COLAB": True,
+                "Path": Path,
+                "hashlib": __import__("hashlib"),
+            }
+            out = io.StringIO()
+
+            with contextlib.redirect_stdout(out):
+                exec(source, namespace)
+
+            output = out.getvalue()
+            self.assertIn("docs/memo.txt", output)
+            self.assertNotIn("index/ignored.md", output)
+            self.assertEqual(namespace["DATA_MANIFEST"][0]["name"], "docs/memo.txt")
 
     def test_notebook_sections_are_reproducibility_oriented(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
@@ -234,8 +267,9 @@ class NotebookColabTests(unittest.TestCase):
                 "## 10. LLM 답변 생성",
                 "## 11. 근거 확인",
                 "## 12. 반복 질문 예시",
-                "## 13. 재현성 리포트",
-                "## 14. 문제 해결 체크리스트",
+                "## 13. 실제 업무파일 RAG 검증",
+                "## 14. 재현성 리포트",
+                "## 15. 문제 해결 체크리스트",
             ],
         )
 

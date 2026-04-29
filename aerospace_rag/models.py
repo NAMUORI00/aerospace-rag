@@ -26,7 +26,8 @@ class Chunk:
         payload["doc_id"] = self.source_file
         payload["canonical_doc_id"] = self.source_file
         payload["canonical_chunk_id"] = self.chunk_id
-        payload["tier"] = "public"
+        payload["tier"] = self.metadata.get("tier", "public")
+        payload["farm_id"] = self.metadata.get("farm_id", "")
         payload["created_at"] = self.metadata.get("created_at", datetime.now(timezone.utc).isoformat())
         payload["asset_ref"] = self.metadata.get("asset_ref")
         payload["table_html_ref"] = self.metadata.get("table_html_ref")
@@ -36,6 +37,22 @@ class Chunk:
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "Chunk":
+        metadata = dict(payload.get("metadata") or {})
+        for key in (
+            "tier",
+            "farm_id",
+            "source_type",
+            "created_at",
+            "asset_ref",
+            "table_html_ref",
+            "image_b64_ref",
+            "formula_latex_ref",
+            "canonical_doc_id",
+            "canonical_chunk_id",
+            "doc_id",
+        ):
+            if key in payload and payload.get(key) is not None:
+                metadata[key] = payload.get(key)
         return cls(
             chunk_id=str(payload["chunk_id"]),
             text=str(payload["text"]),
@@ -44,7 +61,7 @@ class Chunk:
             page=payload.get("page"),
             sheet=payload.get("sheet"),
             row=payload.get("row"),
-            metadata=dict(payload.get("metadata") or {}),
+            metadata=metadata,
         )
 
 

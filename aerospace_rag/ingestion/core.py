@@ -4,9 +4,9 @@ import hashlib
 from pathlib import Path
 from typing import Iterable
 
-from .document_parser import DocumentParser, ParsedChunk
-from .models import Chunk
-from .text import normalize_text
+from .parser import DocumentParser, ParsedChunk
+from ..models import Chunk
+from ..text import normalize_text
 
 
 EXPECTED_FILES = [
@@ -17,7 +17,8 @@ EXPECTED_FILES = [
     "해외정부 우주항공 현황.png",
 ]
 
-SUPPORTED_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".md"}
+SUPPORTED_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".xlsm", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".md"}
+IGNORED_DATA_DIR_NAMES = {"index", ".ipynb_checkpoints", "__pycache__"}
 
 
 SATELLITE_PRICE_TABLE = """| 구분 | 위성/모드 | 해상도(m) | 저장영상(AO) | 신규촬영(NTO) |
@@ -55,7 +56,11 @@ def _require_expected_files(data_dir: Path) -> None:
 
 
 def iter_supported_files(root: Path) -> Iterable[Path]:
+    root = Path(root)
     for path in sorted(root.rglob("*")):
+        relative_parts = path.relative_to(root).parts
+        if any(part in IGNORED_DATA_DIR_NAMES for part in relative_parts[:-1]):
+            continue
         if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES:
             yield path
 
@@ -175,7 +180,7 @@ def _ingest_generic_files(paths: Iterable[Path]) -> list[Chunk]:
 def ingest_data(
     data_dir: str | Path,
     *,
-    strict_expected: bool = True,
+    strict_expected: bool = False,
     include_extra: bool = False,
 ) -> list[Chunk]:
     root = Path(data_dir)
@@ -194,7 +199,11 @@ def ingest_data(
             else:
                 raise ValueError(f"unsupported input file: {path.name}")
     else:
-        chunks.extend(_ingest_generic_files(iter_supported_files(root)))
+        paths = list(iter_supported_files(root))
+        if not paths:
+            supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
+            raise FileNotFoundError(f"no supported data files found in {root}; supported suffixes: {supported}")
+        chunks.extend(_ingest_generic_files(paths))
 
     if strict_expected and include_extra:
         expected_names = {path.name for path in expected_paths}

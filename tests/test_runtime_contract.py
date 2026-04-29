@@ -7,10 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aerospace_rag.config import Settings
-from aerospace_rag.embeddings import EmbeddingService
+from aerospace_rag.generation.providers import generate_answer
 from aerospace_rag.models import Chunk, RetrievalHit
-from aerospace_rag.providers import generate_answer
-from aerospace_rag.runtime_dat import resolve_channel_weights
+from aerospace_rag.retrieval.embeddings import EmbeddingService
+from aerospace_rag.retrieval.weights import resolve_channel_weights
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -22,7 +22,14 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.llm_provider, "ollama")
         self.assertEqual(settings.ollama_model, "gemma4:e2b")
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
+        self.assertEqual(settings.ollama_api_key, "")
         self.assertEqual(settings.dat_mode, "hybrid")
+
+        with patch.dict(os.environ, {"LLM_PROVIDER": "extractive"}, clear=True):
+            self.assertEqual(Settings.from_env().llm_provider, "ollama")
+
+        with patch.dict(os.environ, {"OLLAMA_API_KEY": "test-token"}, clear=True):
+            self.assertEqual(Settings.from_env().ollama_api_key, "test-token")
 
     def test_embedding_service_can_fall_back_without_changing_callers(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)

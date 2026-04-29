@@ -1,0 +1,312 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import asdict, dataclass
+from itertools import combinations
+from typing import Any
+import urllib.request
+
+from ..config import Settings
+from ..models import Chunk
+from ..text import tokenize, unique_ordered
+
+
+KNOWN_ENTITIES = [
+    "H3",
+    "H3 8호기",
+    "QZS-5",
+    "미치비키",
+    "NASA",
+    "NOAA",
+    "Momentus",
+    "solar sail",
+    "위성영상",
+    "저장영상",
+    "신규촬영",
+    "K2",
+    "K3",
+    "K3A",
+    "SAR",
+    "EO",
+    "JAXA",
+    "ISRO",
+    "KARI",
+    "CNSA",
+    "ESA",
+    "판매대행사",
+    "나라장터",
+]
+
+
+_ENTITY_TYPE_HINTS = {
+    "NASA": "Agency",
+    "NOAA": "Agency",
+    "JAXA": "Agency",
+    "ISRO": "Agency",
+    "KARI": "Agency",
+    "CNSA": "Agency",
+    "ESA": "Agency",
+    "Momentus": "Company",
+    "H3": "LaunchVehicle",
+    "H3 8호기": "LaunchVehicle",
+    "QZS-5": "Satellite",
+    "미치비키": "Satellite",
+    "K2": "SatelliteMode",
+    "K3": "SatelliteMode",
+    "K3A": "SatelliteMode",
+    "SAR": "SensorMode",
+    "EO": "SensorMode",
+    "위성영상": "Product",
+    "저장영상": "ProductOption",
+    "신규촬영": "ProductOption",
+}
+
+
+@dataclass(frozen=True)
+class ExtractedEntity:
+    canonical_id: str
+    text: str
+    type: str = "Concept"
+    confidence: float = 0.5
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ExtractedRelation:
+    source: str
+    target: str
+    type: str = "RELATED_TO"
+    confidence: float = 0.35
+    evidence: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ExtractionResult:
+    entities: list[ExtractedEntity]
+    relations: list[ExtractedRelation]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entities": [entity.to_dict() for entity in self.entities],
+            "relations": [relation.to_dict() for relation in self.relations],
+        }
+
+
+def canonical_id(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    raw = re.sub(r"\s+", "_", raw)
+    raw = re.sub(r"[^a-z0-9가-힣_\-:.]+", "", raw)
+    if raw:
+        return raw[:120]
+    return hashlib.sha1(str(value).encode("utf-8")).hexdigest()[:16]
+
+
+def parse_llm_json_object(content: str) -> dict[str, Any]:
+    text = str(content or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if match is None:
+            raise
+        parsed = json.loads(match.group(0))
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM JSON response must be an object")
+    return parsed
+
+
+def _entity_type(text: str) -> str:
+    for key, value in _ENTITY_TYPE_HINTS.items():
+        if key.lower() == str(text or "").lower():
+            return value
+    if re.fullmatch(r"[A-Z][A-Z0-9\-]{1,}", str(text or "")):
+        return "Acronym"
+    return "Concept"
+
+
+def _metadata_keywords(chunk: Chunk) -> list[str]:
+    keywords = str(chunk.metadata.get("keywords") or "")
+    if not keywords:
+        return []
+    return [part.strip() for part in re.split(r"[,;/]", keywords) if part.strip()]
+
+
+def extract_entity_texts(chunk: Chunk) -> list[str]:
+    text = chunk.text
+    lower = text.lower()
+    candidates: list[str] = []
+    for entity in KNOWN_ENTITIES:
+        if entity.lower() in lower:
+            candidates.append(entity)
+    candidates.extend(_metadata_keywords(chunk))
+
+    token_counts: dict[str, int] = {}
+    for token in tokenize(text):
+        if len(token) < 2:
+            continue
+        token_counts[token] = token_counts.get(token, 0) + 1
+    repeated = sorted(token_counts.items(), key=lambda item: (-item[1], item[0]))
+    candidates.extend(token for token, count in repeated if count >= 2)
+    return unique_ordered(candidates)[:32]
+
+
+class KnowledgeExtractor:
+    """Knowledge extractor with an Ollama-only LLM path and deterministic fallback."""
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or Settings.from_env()
+
+    def extract(self, chunk: Chunk) -> ExtractionResult:
+        if str(self.settings.extractor_provider or "").lower() == "ollama":
+            extracted = self._extract_with_ollama(chunk)
+            if extracted is not None:
+                return extracted
+        return self._extract_deterministic(chunk)
+
+    def _extract_with_ollama(self, chunk: Chunk) -> ExtractionResult | None:
+        base_url = str(self.settings.ollama_base_url or "").strip().rstrip("/")
+        model = str(self.settings.ollama_model or "").strip()
+        if not base_url or not model:
+            return None
+        prompt = (
+            "Extract aerospace RAG knowledge as strict JSON with keys entities and relations. "
+            "Entity fields: canonical_id,text,type,confidence. "
+            "Relation fields: source,target,type,confidence,evidence. "
+            "Use canonical_id values in relation source/target.\n\n"
+            f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk.text[:6000]}"
+        )
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0.0},
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.settings.ollama_api_key:
+            headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
+        req = urllib.request.Request(
+            base_url + "/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            content = str(((body.get("message") or {}).get("content")) or "")
+            parsed = parse_llm_json_object(content)
+        except Exception:
+            return None
+        entities = []
+        for item in parsed.get("entities") or []:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or item.get("canonical_id") or "").strip()
+            if not text:
+                continue
+            entities.append(
+                ExtractedEntity(
+                    canonical_id=canonical_id(str(item.get("canonical_id") or text)),
+                    text=text,
+                    type=str(item.get("type") or "Concept"),
+                    confidence=max(0.0, min(1.0, float(item.get("confidence") or 0.5))),
+                )
+            )
+        entity_ids = {entity.canonical_id for entity in entities}
+        relations = []
+        for item in parsed.get("relations") or []:
+            if not isinstance(item, dict):
+                continue
+            source = canonical_id(str(item.get("source") or ""))
+            target = canonical_id(str(item.get("target") or ""))
+            if source not in entity_ids or target not in entity_ids or source == target:
+                continue
+            relations.append(
+                ExtractedRelation(
+                    source=source,
+                    target=target,
+                    type=str(item.get("type") or "RELATED_TO"),
+                    confidence=max(0.0, min(1.0, float(item.get("confidence") or 0.5))),
+                    evidence=str(item.get("evidence") or chunk.chunk_id),
+                )
+            )
+        if not entities:
+            return None
+        return ExtractionResult(entities=entities[:64], relations=relations[:128])
+
+    def _extract_deterministic(self, chunk: Chunk) -> ExtractionResult:
+        entity_texts = extract_entity_texts(chunk)
+        entities = [
+            ExtractedEntity(
+                canonical_id=canonical_id(text),
+                text=text,
+                type=_entity_type(text),
+                confidence=0.75 if text in KNOWN_ENTITIES else 0.45,
+            )
+            for text in entity_texts
+        ]
+        relations = self._relations_for(chunk=chunk, entities=entities)
+        return ExtractionResult(entities=entities, relations=relations)
+
+    def _relations_for(self, *, chunk: Chunk, entities: list[ExtractedEntity]) -> list[ExtractedRelation]:
+        by_text = {entity.text.lower(): entity for entity in entities}
+        relations: list[ExtractedRelation] = []
+
+        def add(source_text: str, target_text: str, rel_type: str, confidence: float) -> None:
+            source = by_text.get(source_text.lower())
+            target = by_text.get(target_text.lower())
+            if source is None or target is None or source.canonical_id == target.canonical_id:
+                return
+            relations.append(
+                ExtractedRelation(
+                    source=source.canonical_id,
+                    target=target.canonical_id,
+                    type=rel_type,
+                    confidence=confidence,
+                    evidence=chunk.chunk_id,
+                )
+            )
+
+        text_lower = chunk.text.lower()
+        if "nasa" in text_lower and "momentus" in text_lower:
+            add("NASA", "Momentus", "AWARDED_CONTRACT_TO", 0.8)
+        if "solar sail" in text_lower and "momentus" in text_lower:
+            add("Momentus", "solar sail", "STUDIES", 0.7)
+        if "h3" in text_lower and "qzs-5" in text_lower:
+            add("H3", "QZS-5", "LAUNCHES", 0.75)
+        if "저장영상" in chunk.text and "신규촬영" in chunk.text:
+            add("저장영상", "신규촬영", "PRICE_COMPARED_WITH", 0.8)
+        if "위성영상" in chunk.text and "저장영상" in chunk.text:
+            add("위성영상", "저장영상", "HAS_OPTION", 0.75)
+        if "위성영상" in chunk.text and "신규촬영" in chunk.text:
+            add("위성영상", "신규촬영", "HAS_OPTION", 0.75)
+
+        seen = {(relation.source, relation.target, relation.type) for relation in relations}
+        for source, target in combinations(entities[:10], 2):
+            key = (source.canonical_id, target.canonical_id, "RELATED_TO")
+            reverse = (target.canonical_id, source.canonical_id, "RELATED_TO")
+            if key in seen or reverse in seen:
+                continue
+            relations.append(
+                ExtractedRelation(
+                    source=source.canonical_id,
+                    target=target.canonical_id,
+                    type="RELATED_TO",
+                    confidence=0.35,
+                    evidence=chunk.chunk_id,
+                )
+            )
+            seen.add(key)
+        return relations[:80]
+
