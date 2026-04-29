@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import os
+import shutil
+import subprocess as real_subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -8,6 +15,30 @@ import nbformat
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks" / "aerospace_rag_colab_ui.ipynb"
+
+
+def project_bootstrap_source() -> str:
+    nb = nbformat.read(NOTEBOOK, as_version=4)
+    for cell in nb.cells:
+        if cell.cell_type == "code" and "def is_project_root" in cell.source:
+            return cell.source
+    raise AssertionError("project bootstrap cell not found")
+
+
+def ollama_runtime_source() -> str:
+    nb = nbformat.read(NOTEBOOK, as_version=4)
+    for cell in nb.cells:
+        if cell.cell_type == "code" and "def ensure_ollama_runtime" in cell.source:
+            return cell.source
+    raise AssertionError("Ollama runtime cell not found")
+
+
+def data_upload_source() -> str:
+    nb = nbformat.read(NOTEBOOK, as_version=4)
+    for cell in nb.cells:
+        if cell.cell_type == "code" and "DATA_DIR = PROJECT_ROOT" in cell.source:
+            return cell.source
+    raise AssertionError("data upload cell not found")
 
 
 class NotebookColabTests(unittest.TestCase):
@@ -21,7 +52,6 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("colab.research.google.com/github/NAMUORI00/aerospace-rag", source)
         self.assertIn("project_root_candidates", source)
         self.assertIn("ensure_valid_cwd", source)
-        self.assertIn("files.upload", source)
         self.assertIn("ensure_dependencies", source)
         self.assertIn("ensure_ollama_runtime", source)
         self.assertIn("gemma4:e2b", source)
@@ -30,7 +60,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("git clone", source)
         self.assertIn("os.chdir(DEFAULT_COLAB_ROOT.parent)", source)
         self.assertIn("shutil.rmtree(DEFAULT_COLAB_ROOT)", source)
-        self.assertIn("Google Drive는 사용하지 않으며", source)
+        self.assertIn("Google Drive는 사용하지 않습니다", source)
         self.assertIn("REPO_COMMIT", source)
         self.assertIn("file_sha256", source)
         self.assertIn("DATA_MANIFEST", source)
@@ -42,7 +72,144 @@ class NotebookColabTests(unittest.TestCase):
         self.assertNotIn("google.colab import files, drive", source)
         self.assertNotIn("from google.colab import drive", source)
         self.assertNotIn("drive.mount", source)
+        self.assertNotIn("files.upload", source)
         self.assertNotIn("zipfile.ZipFile", source)
+        self.assertIn("DATA_DIR.mkdir", source)
+
+    def test_colab_fresh_clone_is_project_root_without_data_dir(self) -> None:
+        source = project_bootstrap_source()
+
+        class FakeSubprocess:
+            STDOUT = real_subprocess.STDOUT
+
+            def __init__(self, clone_root: Path) -> None:
+                self.clone_root = clone_root
+                self.calls: list[list[str]] = []
+
+            def check_call(self, args: list[str]) -> None:
+                self.calls.append(args)
+                self.clone_root.mkdir(parents=True)
+                (self.clone_root / "aerospace_rag").mkdir()
+                (self.clone_root / "notebooks").mkdir()
+
+            def check_output(
+                self,
+                args: list[str],
+                text: bool = True,
+                stderr: object | None = None,
+            ) -> str:
+                return "fake-git-output"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "content" / "aerospace-rag"
+            root.parent.mkdir()
+            source = source.replace('Path("/content/aerospace-rag")', f"Path({str(root)!r})")
+            fake_subprocess = FakeSubprocess(root)
+
+            namespace = {
+                "IN_COLAB": True,
+                "Path": Path,
+                "os": os,
+                "shutil": shutil,
+                "subprocess": fake_subprocess,
+                "sys": sys,
+            }
+
+            previous_cwd = Path.cwd()
+            previous_sys_path = list(sys.path)
+            try:
+                exec(source, namespace)
+                self.assertFalse((root / "data").exists())
+                self.assertEqual(namespace["PROJECT_ROOT"], root)
+                self.assertEqual(Path.cwd(), root)
+                self.assertEqual(
+                    fake_subprocess.calls,
+                    [["git", "clone", "https://github.com/NAMUORI00/aerospace-rag.git", str(root)]],
+                )
+            finally:
+                os.chdir(previous_cwd)
+                sys.path[:] = previous_sys_path
+
+    def test_colab_ollama_install_failure_falls_back_to_extractive_provider(self) -> None:
+        source = ollama_runtime_source()
+
+        class FakeShutil:
+            @staticmethod
+            def which(name: str) -> None:
+                return None
+
+        class FakeSubprocess:
+            DEVNULL = real_subprocess.DEVNULL
+            STDOUT = real_subprocess.STDOUT
+
+            def __init__(self) -> None:
+                self.calls: list[tuple[object, bool]] = []
+
+            def check_call(self, args: object, shell: bool = False) -> None:
+                self.calls.append((args, shell))
+                if args == "curl -fsSL https://ollama.com/install.sh | sh":
+                    raise real_subprocess.CalledProcessError(1, args)
+
+            def Popen(self, *args: object, **kwargs: object) -> None:
+                raise AssertionError("Ollama server should not start after install failure")
+
+        fake_subprocess = FakeSubprocess()
+        previous_env = dict(os.environ)
+        try:
+            os.environ.pop("LLM_PROVIDER", None)
+            namespace = {
+                "IN_COLAB": True,
+                "os": os,
+                "shutil": FakeShutil,
+                "subprocess": fake_subprocess,
+                "time": object(),
+                "urllib": object(),
+            }
+
+            exec(source, namespace)
+
+            self.assertEqual(os.environ["LLM_PROVIDER"], "extractive")
+            self.assertIn((["apt-get", "install", "-y", "zstd"], False), fake_subprocess.calls)
+        finally:
+            os.environ.clear()
+            os.environ.update(previous_env)
+
+    def test_colab_missing_data_creates_data_dir_and_prints_manual_copy_instruction(self) -> None:
+        from aerospace_rag.ingestion import EXPECTED_FILES
+
+        source = data_upload_source()
+
+        class FakeFiles:
+            called = False
+
+            @staticmethod
+            def upload() -> dict[str, bytes]:
+                FakeFiles.called = True
+                raise AssertionError("Colab upload dialog should not be used")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "aerospace-rag"
+            project_root.mkdir()
+            namespace = {
+                "PROJECT_ROOT": project_root,
+                "IN_COLAB": True,
+                "files": FakeFiles,
+                "Path": Path,
+                "hashlib": __import__("hashlib"),
+            }
+            out = io.StringIO()
+
+            with contextlib.redirect_stdout(out), self.assertRaises(FileNotFoundError) as raised:
+                exec(source, namespace)
+
+            output = out.getvalue()
+            self.assertTrue((project_root / "data").is_dir())
+            self.assertFalse(FakeFiles.called)
+            self.assertIn(str(project_root / "data"), output)
+            self.assertIn("위 경로에 데이터 파일을 넣은 뒤 이 셀을 다시 실행하세요.", output)
+            for name in EXPECTED_FILES:
+                self.assertIn(name, output)
+                self.assertIn(name, str(raised.exception))
 
     def test_notebook_sections_are_reproducibility_oriented(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
