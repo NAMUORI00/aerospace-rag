@@ -7,6 +7,7 @@ import shutil
 import subprocess as real_subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -140,6 +141,10 @@ class NotebookColabTests(unittest.TestCase):
 
             previous_cwd = Path.cwd()
             previous_sys_path = list(sys.path)
+            stale_module_names = ["aerospace_rag", "aerospace_rag.pipeline"]
+            previous_modules = {name: sys.modules.get(name) for name in stale_module_names}
+            for name in stale_module_names:
+                sys.modules[name] = types.ModuleType(name)
             try:
                 exec(source, namespace)
                 self.assertFalse((root / "data").exists())
@@ -149,9 +154,16 @@ class NotebookColabTests(unittest.TestCase):
                     fake_subprocess.calls,
                     [["git", "clone", "https://github.com/NAMUORI00/aerospace-rag.git", str(root)]],
                 )
+                for name in stale_module_names:
+                    self.assertNotIn(name, sys.modules)
             finally:
                 os.chdir(previous_cwd)
                 sys.path[:] = previous_sys_path
+                for name, module in previous_modules.items():
+                    if module is None:
+                        sys.modules.pop(name, None)
+                    else:
+                        sys.modules[name] = module
 
     def test_colab_ollama_install_failure_keeps_fixed_ollama_provider(self) -> None:
         source = ollama_runtime_source()
