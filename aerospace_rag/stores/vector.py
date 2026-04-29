@@ -110,14 +110,13 @@ class QdrantVectorStore:
         counts = Counter(tokenize(text))
         if not counts:
             return {"indices": [], "values": []}
-        indices: list[int] = []
-        values: list[float] = []
+        buckets: dict[int, float] = {}
         for token, count in counts.items():
             idx = int(hashlib.md5(token.encode("utf-8")).hexdigest()[:8], 16) % 65536
-            indices.append(idx)
-            values.append(1.0 + math.log1p(float(count)))
-        norm = math.sqrt(sum(v * v for v in values)) or 1.0
-        return {"indices": indices, "values": [v / norm for v in values]}
+            buckets[idx] = buckets.get(idx, 0.0) + 1.0 + math.log1p(float(count))
+        norm = math.sqrt(sum(v * v for v in buckets.values())) or 1.0
+        pairs = sorted(buckets.items())
+        return {"indices": [idx for idx, _ in pairs], "values": [v / norm for _, v in pairs]}
 
     def _to_qdrant_sparse(self, sparse: dict[str, list[float] | list[int]], models):
         return models.SparseVector(

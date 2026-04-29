@@ -107,6 +107,15 @@ class EnterpriseRagTests(unittest.TestCase):
         self.assertEqual(payload["canonical_chunk_id"], "doc#1")
         self.assertEqual(payload["modality"], "image")
 
+    def test_sparse_vector_hash_collisions_keep_unique_indices(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(embed_backend="hash", embed_dim=384, vector_backend="json")
+            store = QdrantVectorStore(Path(tmp) / "index", settings=settings)
+
+            sparse = store._sparse_vector("token76 token210")
+
+        self.assertEqual(len(sparse["indices"]), len(set(sparse["indices"])))
+
     def test_graph_store_uses_graph_lite_index_without_graph_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             graph = GraphStore(Path(tmp) / "index", settings=Settings(extractor_provider="local_fallback"))
