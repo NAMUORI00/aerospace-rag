@@ -3,9 +3,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ipynb_checkpoints/
-data/*
-!data/
-!data/.gitkeep
-!data/README.md
+data/
 tmp/
 output/
