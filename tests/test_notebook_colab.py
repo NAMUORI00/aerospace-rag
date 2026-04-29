@@ -31,11 +31,46 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("os.chdir(DEFAULT_COLAB_ROOT.parent)", source)
         self.assertIn("shutil.rmtree(DEFAULT_COLAB_ROOT)", source)
         self.assertIn("Google Drive는 사용하지 않으며", source)
+        self.assertIn("REPO_COMMIT", source)
+        self.assertIn("file_sha256", source)
+        self.assertIn("DATA_MANIFEST", source)
+        self.assertIn("ingest_data(DATA_DIR)", source)
+        self.assertIn("LocalIndex", source)
+        self.assertIn("REPRODUCIBILITY_REPORT", source)
         self.assertNotIn("/content/drive", source)
         self.assertNotIn("MyDrive", source)
         self.assertNotIn("google.colab import files, drive", source)
+        self.assertNotIn("from google.colab import drive", source)
         self.assertNotIn("drive.mount", source)
         self.assertNotIn("zipfile.ZipFile", source)
+
+    def test_notebook_sections_are_reproducibility_oriented(self) -> None:
+        nb = nbformat.read(NOTEBOOK, as_version=4)
+        headings = [
+            cell.source.strip().splitlines()[0]
+            for cell in nb.cells
+            if cell.cell_type == "markdown" and cell.source.strip().startswith("## ")
+        ]
+
+        self.assertEqual(
+            headings,
+            [
+                "## 1. 실행 환경 확인",
+                "## 2. 프로젝트 소스 확보",
+                "## 3. 의존성 설치와 버전 고정 확인",
+                "## 4. Ollama 런타임과 모델 준비",
+                "## 5. 데이터 파일 준비",
+                "## 6. 실행 설정 확정",
+                "## 7. 수집/파싱 단독 확인",
+                "## 8. 인덱스 생성",
+                "## 9. 검색 단독 검증",
+                "## 10. LLM 답변 생성",
+                "## 11. 근거 확인",
+                "## 12. 반복 질문 예시",
+                "## 13. 재현성 리포트",
+                "## 14. 문제 해결 체크리스트",
+            ],
+        )
 
     def test_notebook_is_saved_without_stale_error_outputs(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)

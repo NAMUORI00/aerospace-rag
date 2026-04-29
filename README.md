@@ -13,13 +13,13 @@ python -m venv .venv
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/NAMUORI00/aerospace-rag/blob/main/notebooks/aerospace_rag_colab_ui.ipynb)
 
-The notebook is designed to use GitHub clone only for project setup in Colab. It does not mount or reuse Google Drive.
+The notebook is designed as a reproducibility walkthrough. It uses GitHub clone only for project setup in Colab and does not mount or reuse Google Drive.
 
 ```python
 GITHUB_REPO_URL = "https://github.com/NAMUORI00/aerospace-rag.git"
 ```
 
-Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook will move to `/content`, delete any existing `/content/aerospace-rag`, clone the repo into `/content/aerospace-rag`, install Python dependencies, start Ollama, pull `gemma4:e2b`, ask you to upload the 5 data files through the browser if missing, build the local Qdrant/BM25/FalkorDB-helper index, and run sample queries.
+Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook is split into environment, source clone, dependency, runtime, data, configuration, ingestion, indexing, retrieval-only, LLM answer, evidence, repeated questions, reproducibility report, and troubleshooting sections. It will move to `/content`, delete any existing `/content/aerospace-rag`, clone the repo into `/content/aerospace-rag`, install Python dependencies, start Ollama, pull `gemma4:e2b`, ask you to upload the 5 data files through the browser if missing, build the local Qdrant/BM25/FalkorDB-helper index, and print a reproducibility report with commit, package versions, data hashes, runtime config, and index paths.
 
 ## Data Files
 
