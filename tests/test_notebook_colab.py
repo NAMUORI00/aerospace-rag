@@ -42,6 +42,14 @@ def data_upload_source() -> str:
     raise AssertionError("data upload cell not found")
 
 
+def google_drive_data_source() -> str:
+    nb = nbformat.read(NOTEBOOK, as_version=4)
+    for cell in nb.cells:
+        if cell.cell_type == "code" and "def import_google_drive_data" in cell.source:
+            return cell.source
+    raise AssertionError("Google Drive data import cell not found")
+
+
 class NotebookColabTests(unittest.TestCase):
     def test_notebook_has_colab_project_bootstrap(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
@@ -80,7 +88,10 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("git clone", source)
         self.assertIn("os.chdir(DEFAULT_COLAB_ROOT.parent)", source)
         self.assertIn("shutil.rmtree(DEFAULT_COLAB_ROOT)", source)
-        self.assertIn("Google Drive는 사용하지 않습니다", source)
+        self.assertIn("USE_GOOGLE_DRIVE_DATA", source)
+        self.assertIn("GOOGLE_DRIVE_DATA_DIR", source)
+        self.assertIn("drive.mount", source)
+        self.assertIn("/content/drive/MyDrive/aerospace-rag-data", source)
         self.assertIn("REPO_COMMIT", source)
         self.assertIn("file_sha256", source)
         self.assertIn("DATA_MANIFEST", source)
@@ -91,11 +102,6 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("LocalIndex", source)
         self.assertIn("ACTUAL_RAG_QUESTIONS", source)
         self.assertIn("ACTUAL_RAG_RESULTS", source)
-        self.assertNotIn("/content/drive", source)
-        self.assertNotIn("MyDrive", source)
-        self.assertNotIn("google.colab import files, drive", source)
-        self.assertNotIn("from google.colab import drive", source)
-        self.assertNotIn("drive.mount", source)
         self.assertNotIn("files.upload", source)
         self.assertNotIn("zipfile.ZipFile", source)
         self.assertIn("DATA_DIR.mkdir", source)
@@ -248,6 +254,28 @@ class NotebookColabTests(unittest.TestCase):
             self.assertIn(".pdf", output)
             self.assertIn("위 경로에 지원 문서 파일을 넣은 뒤 이 셀을 다시 실행하세요.", output)
             self.assertIn("지원되는 data 파일이 없습니다", str(raised.exception))
+
+    def test_google_drive_data_cell_is_optional_by_default(self) -> None:
+        source = google_drive_data_source()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "aerospace-rag"
+            project_root.mkdir()
+            namespace = {
+                "PROJECT_ROOT": project_root,
+                "DATA_DIR": project_root / "data",
+                "IN_COLAB": True,
+                "Path": Path,
+                "shutil": shutil,
+            }
+            out = io.StringIO()
+
+            with contextlib.redirect_stdout(out):
+                exec(source, namespace)
+
+            output = out.getvalue()
+            self.assertIn("Google Drive data import skipped", output)
+            self.assertEqual(namespace["DRIVE_DATA_FILES"], [])
 
     def test_colab_data_cell_discovers_supported_files(self) -> None:
         source = data_upload_source()
