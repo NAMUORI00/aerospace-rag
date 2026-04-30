@@ -22,7 +22,6 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_valid_cwd, git_output", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_dependencies", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime", source)
-        self.assertIn("from aerospace_rag.notebook_runtime import import_google_drive_data", source)
         self.assertIn("from aerospace_rag.notebook_runtime import discover_data_files", source)
         self.assertIn("gemma4:e2b", source)
         self.assertIn("ANSWER_PROVIDER", source)
@@ -33,6 +32,8 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("ingest_data(DATA_DIR, strict_expected=False)", source)
         self.assertIn("LocalIndex", source)
         self.assertIn("ACTUAL_RAG_QUESTIONS", source)
+        self.assertNotIn("import_google_drive_data", source)
+        self.assertNotIn("USE_GOOGLE_DRIVE_DATA", source)
         self.assertNotIn("files.upload", source)
         self.assertNotIn("zipfile.ZipFile", source)
 

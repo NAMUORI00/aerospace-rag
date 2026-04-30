@@ -23,7 +23,7 @@ python -m venv .venv
 
 Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `gemma4:e2b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks.
 
-By default, put files directly into the Colab file panel under `aerospace-rag/data`. The notebook also has an optional Google Drive copy step that is disabled unless you set `USE_GOOGLE_DRIVE_DATA = True`.
+By default, put files directly into the Colab file panel under `aerospace-rag/data`.
 
 ## Data Files
 
