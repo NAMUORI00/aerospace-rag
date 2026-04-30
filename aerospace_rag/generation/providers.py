@@ -25,14 +25,30 @@ def route_generation_provider(
 
 
 def _build_prompt(question: str, hits: list[RetrievalHit]) -> str:
+    has_table = any(hit.chunk.modality == "table" for hit in hits[:5])
+    instructions = "다음 근거만 사용해 한국어로 답하세요. 근거가 부족하면 부족하다고 말하세요."
+    if has_table:
+        instructions += " 표가 있으면 열 순서를 유지하고, 같은 행의 값만 비교하며, 인접 열 값을 바꾸지 마세요."
     context = "\n\n".join(
-        f"[{idx}] {hit.chunk.source_file} {hit.chunk.page or hit.chunk.row or ''}\n{hit.chunk.text}"
+        _format_hit_context(idx, hit)
         for idx, hit in enumerate(hits[:5], start=1)
     )
     return (
-        "다음 근거만 사용해 한국어로 답하세요. 근거가 부족하면 부족하다고 말하세요.\n\n"
+        f"{instructions}\n\n"
         f"질문: {question}\n\n근거:\n{context}"
     )
+
+
+def _format_hit_context(idx: int, hit: RetrievalHit) -> str:
+    location = ""
+    if hit.chunk.page:
+        location = f" p.{hit.chunk.page}"
+    elif hit.chunk.row:
+        location = f" row {hit.chunk.row}"
+    header = f"[{idx}] {hit.chunk.source_file}{location}"
+    if hit.chunk.modality == "table":
+        return f"{header}\n표 데이터:\n{hit.chunk.text}"
+    return f"{header}\n{hit.chunk.text}"
 
 
 def _extractive_answer(question: str, hits: list[RetrievalHit]) -> str:

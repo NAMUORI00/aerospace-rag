@@ -51,6 +51,19 @@ class IngestionTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "docling"):
                     ingest_data(data_dir)
 
+    def test_ingest_data_preserves_multiline_png_table_text_in_default_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            (data_dir / "위성영상가격.png").write_bytes(b"not-a-real-image")
+
+            chunks = ingest_data(data_dir)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].modality, "table")
+        self.assertIn("\n| EO | K3 |", chunks[0].text)
+        self.assertIn("\n메모:", chunks[0].text)
+
     @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
     def test_ingest_data_creates_expected_modalities_and_metadata(self) -> None:
         chunks = ingest_data(DATA_DIR)
