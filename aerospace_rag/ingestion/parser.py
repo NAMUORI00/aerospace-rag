@@ -58,7 +58,11 @@ class DocumentParser:
         formula_latex_ref: str | None = None,
         image_b64_ref: str | None = None,
     ) -> list[ParsedChunk]:
-        raw = normalize_text(str(text or ""))
+        if modality == "table":
+            lines = [normalize_text(line) for line in str(text or "").splitlines()]
+            raw = "\n".join(line for line in lines if line).strip()
+        else:
+            raw = normalize_text(str(text or ""))
         if not raw:
             return []
         base_meta: dict[str, Any] = {
