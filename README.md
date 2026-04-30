@@ -21,7 +21,7 @@ python -m venv .venv
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/NAMUORI00/aerospace-rag/blob/main/notebooks/aerospace_rag_colab_ui.ipynb)
 
-Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `qwen2.5:7b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks. Its indexing default is strict Ollama extraction with one-hour timeout limits, JSON Schema structured output, one Ollama repair attempt for malformed JSON, and no local fallback.
+Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `gemma4:e4b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks. Its indexing default is strict Ollama extraction with one-hour timeout limits, JSON Schema structured output, one Ollama repair attempt for malformed JSON, and no local fallback.
 
 By default, put files directly into the Colab file panel under `aerospace-rag/data`.
 
@@ -77,7 +77,7 @@ print(response.answer)
 생성 LLM은 Ollama로 고정합니다.
 
 - `OLLAMA_BASE_URL`: default `http://127.0.0.1:11434`
-- `OLLAMA_MODEL`: default `gemma4:e2b`
+- `OLLAMA_MODEL`: default `gemma4:e4b`
 - `OLLAMA_API_KEY`: optional. Required only when `OLLAMA_BASE_URL=https://ollama.com`.
 
 `ask()`는 기본적으로 Ollama를 호출합니다. Ollama 서버 또는 모델 호출이 실패하면 자동으로 extractive 답변으로 우회하지 않고 명확한 오류를 냅니다. CLI의 `--provider extractive` 또는 `ask(..., provider="extractive")`는 LLM 없이 검색 결과만 확인하는 명시적 디버그 경로입니다.

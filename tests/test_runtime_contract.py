@@ -17,14 +17,14 @@ from aerospace_rag.retrieval.weights import resolve_channel_weights
 
 
 class RuntimeContractTests(unittest.TestCase):
-    def test_settings_default_to_core_models_and_ollama_gemma4_e2b(self) -> None:
+    def test_settings_default_to_core_models_and_ollama_gemma4_e4b(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings.from_env()
 
         self.assertEqual(settings.embed_model, "BAAI/bge-m3")
         self.assertEqual(settings.vector_backend, "qdrant")
         self.assertEqual(settings.llm_provider, "ollama")
-        self.assertEqual(settings.ollama_model, "gemma4:e2b")
+        self.assertEqual(settings.ollama_model, "gemma4:e4b")
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
         self.assertEqual(settings.ollama_api_key, "")
         self.assertEqual(settings.ollama_extract_timeout_seconds, 3600)
@@ -101,7 +101,7 @@ class RuntimeContractTests(unittest.TestCase):
     def test_ollama_provider_raises_when_server_unavailable(self) -> None:
         chunk = Chunk(
             chunk_id="c1",
-            text="Ollama gemma4:e2b는 Colab에서 임시 LLM으로 사용할 수 있다.",
+            text="Ollama gemma4:e4b는 Colab에서 임시 LLM으로 사용할 수 있다.",
             source_file="source.md",
             modality="text",
         )
@@ -112,7 +112,7 @@ class RuntimeContractTests(unittest.TestCase):
                 "Ollama 기본 모델은?",
                 [hit],
                 provider="ollama",
-                settings=Settings(ollama_base_url="http://127.0.0.1:1", ollama_model="gemma4:e2b"),
+                settings=Settings(ollama_base_url="http://127.0.0.1:1", ollama_model="gemma4:e4b"),
             )
 
     def test_ollama_generation_uses_configured_timeout_and_generation_limits(self) -> None:
@@ -161,7 +161,7 @@ class RuntimeContractTests(unittest.TestCase):
             KnowledgeExtractor(
                 settings=Settings(
                     ollama_base_url="http://127.0.0.1:1",
-                    ollama_model="gemma4:e2b",
+                    ollama_model="gemma4:e4b",
                     extractor_provider="ollama",
                 )
             ).extract(chunk)

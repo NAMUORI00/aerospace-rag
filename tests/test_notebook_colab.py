@@ -24,7 +24,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_dependencies", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime", source)
         self.assertIn("from aerospace_rag.notebook_runtime import discover_data_files", source)
-        self.assertIn("qwen2.5:7b", source)
+        self.assertIn("gemma4:e4b", source)
         self.assertIn("ANSWER_PROVIDER", source)
         self.assertIn("TOP_K", source)
         self.assertIn("EXTRACTOR_LLM_BACKEND", source)
