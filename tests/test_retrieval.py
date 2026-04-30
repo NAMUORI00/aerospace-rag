@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from aerospace_rag.config import Settings
 from aerospace_rag.generation.providers import route_generation_provider
 from aerospace_rag.models import Chunk
+from aerospace_rag.retrieval.embeddings import EmbeddingService
 from aerospace_rag.retrieval.extraction import KnowledgeExtractor
 from aerospace_rag.retrieval.fusion import ChannelHit, weighted_rrf
 from aerospace_rag.retrieval.weights import resolve_channel_weights
@@ -18,6 +20,9 @@ from aerospace_rag.stores.vector import QdrantVectorStore
 
 
 class RetrievalTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        EmbeddingService._MODEL_CACHE.clear()
+
     def test_generation_provider_rejects_non_core_provider_aliases(self) -> None:
         settings = Settings(llm_provider="extractive")
 
@@ -116,6 +121,46 @@ class RetrievalTests(unittest.TestCase):
             sparse = store._sparse_vector("token76 token210")
 
         self.assertEqual(len(sparse["indices"]), len(set(sparse["indices"])))
+
+    def test_embedding_service_reuses_sentence_transformer_instance(self) -> None:
+        class FakeModel:
+            def get_embedding_dimension(self) -> int:
+                return 384
+
+        fake_model = FakeModel()
+        calls: list[str] = []
+
+        def fake_sentence_transformer(model_name: str) -> FakeModel:
+            calls.append(model_name)
+            return fake_model
+
+        fake_module = types.SimpleNamespace(SentenceTransformer=fake_sentence_transformer)
+        with patch.dict(sys.modules, {"sentence_transformers": fake_module}):
+            first = EmbeddingService(Settings(embed_model="BAAI/bge-m3"))
+            second = EmbeddingService(Settings(embed_model="BAAI/bge-m3"))
+
+        self.assertIs(first._model, second._model)
+        self.assertEqual(calls, ["BAAI/bge-m3"])
+
+    def test_embedding_service_prefers_new_dimension_api_without_deprecation_call(self) -> None:
+        class FakeModel:
+            def __init__(self) -> None:
+                self.deprecated_called = False
+
+            def get_embedding_dimension(self) -> int:
+                return 256
+
+            def get_sentence_embedding_dimension(self) -> int:
+                self.deprecated_called = True
+                raise AssertionError("deprecated dimension API should not be used")
+
+        fake_model = FakeModel()
+        fake_module = types.SimpleNamespace(SentenceTransformer=lambda _model_name: fake_model)
+        with patch.dict(sys.modules, {"sentence_transformers": fake_module}):
+            service = EmbeddingService(Settings(embed_model="custom-model"))
+
+        self.assertEqual(service.vector_size, 256)
+        self.assertFalse(fake_model.deprecated_called)
 
     def test_graph_store_uses_graph_lite_index_without_graph_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
