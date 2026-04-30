@@ -13,6 +13,8 @@ def _normalize(vector: list[float]) -> list[float]:
 
 
 class EmbeddingService:
+    _MODEL_CACHE: dict[tuple[str, str], tuple[object, int]] = {}
+
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
         backend = str(self.settings.embed_backend or "sentence_transformers").strip().lower()
@@ -26,9 +28,17 @@ class EmbeddingService:
         try:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.settings.embed_model)
-            dim = int(getattr(self._model, "get_sentence_embedding_dimension", lambda: self.settings.embed_dim)())
-            self.vector_size = dim or self.settings.embed_dim
+            cache_key = (backend, self.settings.embed_model)
+            cached = self._MODEL_CACHE.get(cache_key)
+            if cached is None:
+                model = SentenceTransformer(self.settings.embed_model)
+                if hasattr(model, "get_embedding_dimension"):
+                    dim = int(getattr(model, "get_embedding_dimension")())
+                else:
+                    dim = int(getattr(model, "get_sentence_embedding_dimension", lambda: self.settings.embed_dim)())
+                cached = (model, dim or self.settings.embed_dim)
+                self._MODEL_CACHE[cache_key] = cached
+            self._model, self.vector_size = cached
             self.provider_name = "sentence_transformers"
         except Exception as exc:
             raise RuntimeError(

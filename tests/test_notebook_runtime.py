@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aerospace_rag import notebook_runtime
+from aerospace_rag.models import QueryResponse, SourceRef
 
 
 class NotebookRuntimeTests(unittest.TestCase):
@@ -80,6 +81,74 @@ class NotebookRuntimeTests(unittest.TestCase):
 
         self.assertEqual(copied, [])
         self.assertIn("Google Drive data import skipped", out.getvalue())
+
+    def test_format_answer_markdown_separates_answer_and_debug_details(self) -> None:
+        response = QueryResponse(
+            answer="핵심 요약입니다.\n\n- 항목 A\n- 항목 B",
+            sources=[
+                SourceRef(
+                    chunk_id="doc#1",
+                    source_file="doc.pdf",
+                    modality="text",
+                    score=0.42,
+                    excerpt="근거 문장입니다.",
+                    page=3,
+                    channels={"qdrant": 0.3},
+                )
+            ],
+            routing={"provider": "ollama"},
+            diagnostics={"channels": ["bm25", "qdrant"]},
+        )
+
+        markdown = notebook_runtime.format_answer_markdown(response)
+
+        self.assertIn("### 답변", markdown)
+        self.assertIn("핵심 요약입니다.", markdown)
+        self.assertIn("### 상위 근거", markdown)
+        self.assertIn("doc.pdf", markdown)
+        self.assertIn("<details>", markdown)
+        self.assertIn("```json", markdown)
+
+    def test_build_response_row_and_html_table_compact_long_answers(self) -> None:
+        response = QueryResponse(
+            answer="첫 문장입니다.\n\n- 자세한 설명이 이어집니다.",
+            sources=[
+                SourceRef("doc#1", "alpha.pdf", "text", 0.7, "A"),
+                SourceRef("doc#2", "alpha.pdf", "text", 0.6, "B"),
+                SourceRef("doc#3", "beta.pdf", "text", 0.5, "C"),
+            ],
+            routing={"provider": "ollama"},
+            diagnostics={"channels": ["bm25", "graph"]},
+        )
+
+        row = notebook_runtime.build_response_row("무슨 질문인가?", response, case=2)
+        table = notebook_runtime.format_results_table([row], columns=["case", "question", "summary", "top_source", "source_files"])
+
+        self.assertEqual(row["case"], 2)
+        self.assertEqual(row["provider"], "ollama")
+        self.assertEqual(row["top_source"], "alpha.pdf")
+        self.assertEqual(row["source_files"], "alpha.pdf, beta.pdf")
+        self.assertIn("첫 문장입니다.", row["summary"])
+        self.assertNotIn("\n", row["summary"])
+        self.assertIn("<table", table)
+        self.assertIn("무슨 질문인가?", table)
+        self.assertIn("alpha.pdf, beta.pdf", table)
+
+    def test_build_response_row_prefers_clean_intro_and_first_bullet_for_table_summary(self) -> None:
+        response = QueryResponse(
+            answer="가격 차이는 다음과 같습니다:\n\n- **저장영상(AO)**: 기존 보유 영상 기준 가격\n- 신규촬영(NTO): 신규 촬영 요청 기준 가격",
+            sources=[SourceRef("doc#1", "alpha.pdf", "text", 0.7, "A")],
+            routing={"provider": "ollama"},
+            diagnostics={"channels": ["bm25"]},
+        )
+
+        row = notebook_runtime.build_response_row("질문", response)
+        table = notebook_runtime.format_results_table([row], columns=["summary"])
+
+        self.assertEqual(row["summary"], "가격 차이는 다음과 같습니다: 저장영상(AO): 기존 보유 영상 기준 가격")
+        self.assertNotIn("**", row["summary"])
+        self.assertNotIn("- 신규촬영", row["summary"])
+        self.assertIn("가격 차이는 다음과 같습니다: 저장영상(AO): 기존 보유 영상 기준 가격", table)
 
     def test_ollama_install_failure_keeps_fixed_ollama_provider(self) -> None:
         class FakeShutil:

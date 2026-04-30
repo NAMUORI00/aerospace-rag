@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import html
 import hashlib
 import importlib.metadata as importlib_metadata
 import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import time
 import urllib.request
+from typing import Iterable, Mapping, Sequence
 
 from .ingestion import SUPPORTED_SUFFIXES, iter_supported_files
+from .models import QueryResponse, RetrievalHit, SourceRef
 
 
 REQUIRED_NOTEBOOK_PACKAGES = {
@@ -225,3 +229,193 @@ def discover_data_files(data_dir: Path) -> list[dict[str, object]]:
         }
         manifest.append(entry)
     return manifest
+
+
+def _location_label(*, page: int | None = None, sheet: str | None = None, row: int | None = None) -> str:
+    if page is not None:
+        return f"p.{page}"
+    if sheet and row is not None:
+        return f"{sheet}:{row}"
+    if sheet:
+        return sheet
+    if row is not None:
+        return f"row {row}"
+    return "table"
+
+
+def _channel_text(channels: Mapping[str, float] | None) -> str:
+    if not channels:
+        return "-"
+    return ", ".join(f"{name}={score:.3f}" for name, score in channels.items())
+
+
+def _clean_inline_text(text: object, *, max_chars: int | None = None) -> str:
+    value = " ".join(str(text).split())
+    if max_chars is None or len(value) <= max_chars:
+        return value
+    return value[: max_chars - 1].rstrip() + "…"
+
+
+def _clean_answer_line(text: object) -> str:
+    value = str(text).strip()
+    value = re.sub(r"^\s*#+\s+", "", value)
+    value = re.sub(r"^\s*[-*+]\s+", "", value)
+    value = value.replace("**", "").replace("__", "").replace("`", "")
+    return " ".join(value.split())
+
+
+def _summarize_answer_for_table(answer: object, *, max_chars: int = 220) -> str:
+    lines = [_clean_answer_line(line) for line in str(answer or "").splitlines()]
+    meaningful = [line for line in lines if line]
+    if not meaningful:
+        return "-"
+    summary_parts = [meaningful[0]]
+    if summary_parts[0].endswith(":") and len(meaningful) > 1:
+        summary_parts.append(meaningful[1])
+    return _clean_inline_text(" ".join(summary_parts), max_chars=max_chars)
+
+
+def _json_details(title: str, payload: object) -> str:
+    return (
+        f"<details>\n<summary>{html.escape(title)}</summary>\n\n"
+        "```json\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
+        "```\n"
+        "</details>"
+    )
+
+
+def format_retrieval_markdown(
+    question: str,
+    hits: Sequence[RetrievalHit],
+    diagnostics: Mapping[str, object] | None = None,
+) -> str:
+    diagnostics = diagnostics or {}
+    parts = [
+        "### 검색 요약",
+        f"- 질문: {question}",
+        f"- 검색 결과 수: {len(hits)}",
+    ]
+    channels = diagnostics.get("channels")
+    if isinstance(channels, Iterable) and not isinstance(channels, (str, bytes, dict)):
+        parts.append(f"- 활성 채널: {', '.join(str(channel) for channel in channels)}")
+    if hits:
+        lines = ["### 상위 결과"]
+        for idx, hit in enumerate(hits, start=1):
+            lines.append(
+                f"{idx}. `{hit.chunk.source_file}` ({_location_label(page=hit.chunk.page, sheet=hit.chunk.sheet, row=hit.chunk.row)}) "
+                f"score={hit.score:.3f}"
+            )
+            lines.append(f"   - channels: {_channel_text(hit.channels)}")
+            lines.append(f"   - excerpt: {_clean_inline_text(hit.chunk.text, max_chars=280)}")
+        parts.append("\n".join(lines))
+    if diagnostics:
+        parts.append(_json_details("Retrieval diagnostics", diagnostics))
+    return "\n\n".join(parts)
+
+
+def format_answer_markdown(response: QueryResponse, *, max_sources: int = 3) -> str:
+    answer = str(response.answer or "").strip() or "_답변이 비어 있습니다._"
+    parts = ["### 답변", answer]
+    if response.sources:
+        lines = ["### 상위 근거"]
+        for idx, source in enumerate(response.sources[:max_sources], start=1):
+            lines.append(
+                f"{idx}. `{source.source_file}` ({_location_label(page=source.page, sheet=source.sheet, row=source.row)}) "
+                f"score={source.score:.3f}"
+            )
+            lines.append(f"   - channels: {_channel_text(source.channels)}")
+        parts.append("\n".join(lines))
+    if response.routing:
+        parts.append(_json_details("Routing", response.routing))
+    if response.diagnostics:
+        parts.append(_json_details("Diagnostics", response.diagnostics))
+    return "\n\n".join(parts)
+
+
+def format_sources_markdown(sources: Sequence[SourceRef]) -> str:
+    if not sources:
+        return "### 근거 상세\n\n_근거가 없습니다._"
+    parts = ["### 근거 상세"]
+    for idx, source in enumerate(sources, start=1):
+        excerpt_lines = str(source.excerpt or "").strip().splitlines() or ["(excerpt 없음)"]
+        quoted_excerpt = "\n".join(f"> {line}" for line in excerpt_lines)
+        parts.append(
+            f"#### {idx}. `{source.source_file}` ({_location_label(page=source.page, sheet=source.sheet, row=source.row)})"
+        )
+        parts.append(f"- score: {source.score:.3f}")
+        parts.append(f"- channels: {_channel_text(source.channels)}")
+        parts.append(quoted_excerpt)
+    return "\n\n".join(parts)
+
+
+def build_response_row(question: str, response: QueryResponse, *, case: int | None = None) -> dict[str, object]:
+    source_files: list[str] = []
+    for source in response.sources:
+        if source.source_file not in source_files:
+            source_files.append(source.source_file)
+    channels = response.diagnostics.get("channels")
+    row: dict[str, object] = {
+        "question": question,
+        "summary": _summarize_answer_for_table(response.answer, max_chars=220),
+        "provider": response.routing.get("provider") or response.diagnostics.get("provider") or "-",
+        "source_count": len(response.sources),
+        "channels": ", ".join(str(channel) for channel in channels) if isinstance(channels, list) else "-",
+        "top_source": response.sources[0].source_file if response.sources else "-",
+        "top_score": round(response.sources[0].score, 4) if response.sources else "-",
+        "source_files": ", ".join(source_files) if source_files else "-",
+    }
+    if case is not None:
+        row["case"] = case
+    return row
+
+
+NOTEBOOK_COLUMN_LABELS = {
+    "case": "Case",
+    "question": "Question",
+    "summary": "Answer Summary",
+    "provider": "Provider",
+    "source_count": "Sources",
+    "channels": "Channels",
+    "top_source": "Top Source",
+    "top_score": "Top Score",
+    "source_files": "Source Files",
+}
+
+
+def format_results_table(rows: Sequence[Mapping[str, object]], *, columns: Sequence[str] | None = None) -> str:
+    if not rows:
+        return "<p><em>No results</em></p>"
+    ordered_columns = list(columns or rows[0].keys())
+    header_html = "".join(
+        f"<th style='padding:10px; border-bottom:1px solid #d0d7de; text-align:left; background:#f6f8fa;'>"
+        f"{html.escape(NOTEBOOK_COLUMN_LABELS.get(column, column.replace('_', ' ').title()))}</th>"
+        for column in ordered_columns
+    )
+    body_rows: list[str] = []
+    for row in rows:
+        cells: list[str] = []
+        for column in ordered_columns:
+            value = row.get(column, "-")
+            if isinstance(value, float):
+                text = f"{value:.4f}"
+            elif isinstance(value, (list, tuple, set)):
+                text = ", ".join(str(item) for item in value)
+            elif value is None or value == "":
+                text = "-"
+            else:
+                text = str(value)
+            safe_text = html.escape(text).replace("\n", "<br>")
+            cells.append(
+                "<td style='padding:10px; border-bottom:1px solid #eaecf0; vertical-align:top;'>"
+                f"{safe_text}</td>"
+            )
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    return (
+        "<div style='overflow-x:auto; margin:8px 0 16px;'>"
+        "<table style='border-collapse:collapse; width:100%; font-size:14px; line-height:1.5;'>"
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table>"
+        "</div>"
+    )
