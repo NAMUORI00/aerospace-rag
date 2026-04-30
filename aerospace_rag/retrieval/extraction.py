@@ -203,7 +203,7 @@ class KnowledgeExtractor:
         headers = {"Content-Type": "application/json"}
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
-        timeout = max(1, int(self.settings.ollama_extract_timeout_seconds or 300))
+        timeout = max(1, int(self.settings.ollama_extract_timeout_seconds or 3600))
         attempts = max(0, int(self.settings.ollama_extract_retries or 0)) + 1
         last_error: Exception | None = None
         parsed: dict[str, Any] | None = None
@@ -223,12 +223,9 @@ class KnowledgeExtractor:
             except Exception as exc:
                 last_error = exc
         if parsed is None:
-            if self.settings.extractor_fallback_on_error:
-                return self._extract_local_debug(chunk)
             raise RuntimeError(
                 "Ollama knowledge extraction failed. Start Ollama, pull the configured model, "
-                "increase OLLAMA_EXTRACT_TIMEOUT_SECONDS, or set EXTRACTOR_FALLBACK_ON_ERROR=true "
-                "to keep Colab indexing running."
+                "or increase OLLAMA_EXTRACT_TIMEOUT_SECONDS."
             ) from last_error
         entities = []
         for item in parsed.get("entities") or []:

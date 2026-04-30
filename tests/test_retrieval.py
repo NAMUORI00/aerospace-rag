@@ -170,22 +170,19 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
         self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
 
-    def test_ollama_extractor_can_fallback_after_timeout_for_colab_indexing(self) -> None:
+    def test_ollama_extractor_raises_after_timeout_without_local_fallback(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
 
         with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
-            result = KnowledgeExtractor(
-                settings=Settings(
-                    ollama_base_url="http://127.0.0.1:11434",
-                    ollama_model="gemma4:e2b",
-                    extractor_provider="ollama",
-                    extractor_fallback_on_error=True,
-                    ollama_extract_retries=1,
-                )
-            ).extract(chunk)
-
-        self.assertIn("NASA", [entity.text for entity in result.entities])
-        self.assertIn("Momentus", [entity.text for entity in result.entities])
+            with self.assertRaisesRegex(RuntimeError, "Ollama knowledge extraction failed"):
+                KnowledgeExtractor(
+                    settings=Settings(
+                        ollama_base_url="http://127.0.0.1:11434",
+                        ollama_model="gemma4:e2b",
+                        extractor_provider="ollama",
+                        ollama_extract_retries=0,
+                    )
+                ).extract(chunk)
 
     def test_ollama_extractor_uses_configured_timeout_and_generation_limits(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")

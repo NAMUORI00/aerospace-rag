@@ -75,7 +75,7 @@ def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) 
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=max(1, int(settings.ollama_generate_timeout_seconds or 300))) as response:
+        with urllib.request.urlopen(req, timeout=max(1, int(settings.ollama_generate_timeout_seconds or 3600))) as response:
             body = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         raise OllamaGenerationError(

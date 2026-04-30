@@ -27,11 +27,11 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_model, "gemma4:e2b")
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
         self.assertEqual(settings.ollama_api_key, "")
-        self.assertEqual(settings.ollama_extract_timeout_seconds, 300)
-        self.assertEqual(settings.ollama_generate_timeout_seconds, 300)
+        self.assertEqual(settings.ollama_extract_timeout_seconds, 3600)
+        self.assertEqual(settings.ollama_generate_timeout_seconds, 3600)
         self.assertEqual(settings.ollama_keep_alive, "10m")
-        self.assertFalse(settings.extractor_fallback_on_error)
         self.assertEqual(settings.extractor_provider, "ollama")
+        self.assertFalse(hasattr(settings, "extractor_fallback_on_error"))
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
         with patch.dict(os.environ, {"LLM_PROVIDER": "extractive"}, clear=True):
@@ -51,7 +51,6 @@ class RuntimeContractTests(unittest.TestCase):
                 "OLLAMA_EXTRACT_NUM_PREDICT": "768",
                 "OLLAMA_ANSWER_NUM_PREDICT": "1200",
                 "OLLAMA_EXTRACT_MAX_CHARS": "2500",
-                "EXTRACTOR_FALLBACK_ON_ERROR": "true",
             },
             clear=True,
         ):
@@ -64,7 +63,6 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_extract_num_predict, 768)
         self.assertEqual(settings.ollama_answer_num_predict, 1200)
         self.assertEqual(settings.ollama_extract_max_chars, 2500)
-        self.assertTrue(settings.extractor_fallback_on_error)
 
     def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:
         with patch.dict(sys.modules, {"sentence_transformers": None}):
