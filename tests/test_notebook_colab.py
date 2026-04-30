@@ -14,6 +14,7 @@ class NotebookColabTests(unittest.TestCase):
     def test_notebook_uses_runtime_helper_and_keeps_user_flow(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
         source = "\n".join(cell.source for cell in nb.cells)
+        code_source = "\n".join(cell.source for cell in nb.cells if cell.cell_type == "code")
         colab = nb.metadata.get("colab", {})
 
         self.assertTrue(colab.get("include_colab_link"))
@@ -27,6 +28,8 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("ANSWER_PROVIDER", source)
         self.assertIn("TOP_K", source)
         self.assertIn("EXTRACTOR_LLM_BACKEND", source)
+        self.assertIn('EXTRACTOR_LLM_BACKEND = "local_fallback"', code_source)
+        self.assertNotIn('EXTRACTOR_LLM_BACKEND = "ollama"', code_source)
         self.assertIn("GITHUB_REPO_URL", source)
         self.assertIn("DATA_MANIFEST", source)
         self.assertIn("ingest_data(DATA_DIR, strict_expected=False)", source)
