@@ -26,7 +26,7 @@ class Settings:
     qdrant_url: str = ""
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "gemma4:e2b"
+    ollama_model: str = "gemma4:e4b"
     ollama_api_key: str = ""
     ollama_keep_alive: str = "10m"
     ollama_extract_timeout_seconds: int = 3600
@@ -52,7 +52,7 @@ class Settings:
             qdrant_url=os.environ.get("QDRANT_URL", ""),
             llm_provider="ollama",
             ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
-            ollama_model=os.environ.get("OLLAMA_MODEL", os.environ.get("GEMMA4_MODEL", "gemma4:e2b")),
+            ollama_model=os.environ.get("OLLAMA_MODEL", os.environ.get("GEMMA4_MODEL", "gemma4:e4b")),
             ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
             ollama_keep_alive=os.environ.get("OLLAMA_KEEP_ALIVE", "10m"),
             ollama_extract_timeout_seconds=_env_int("OLLAMA_EXTRACT_TIMEOUT_SECONDS", 3600),
