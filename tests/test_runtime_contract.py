@@ -16,7 +16,7 @@ from aerospace_rag.retrieval.weights import resolve_channel_weights
 
 
 class RuntimeContractTests(unittest.TestCase):
-    def test_settings_default_to_smartfarm_like_models_and_ollama_gemma4_e2b(self) -> None:
+    def test_settings_default_to_core_models_and_ollama_gemma4_e2b(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings.from_env()
 
@@ -27,7 +27,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
         self.assertEqual(settings.ollama_api_key, "")
         self.assertEqual(settings.extractor_provider, "ollama")
-        self.assertFalse(hasattr(settings, "dat_mode"))
+        self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
         with patch.dict(os.environ, {"LLM_PROVIDER": "extractive"}, clear=True):
             self.assertEqual(Settings.from_env().llm_provider, "ollama")

@@ -7,7 +7,8 @@ from pathlib import Path
 from ..config import Settings
 from ..models import Chunk, RetrievalHit
 from ..retrieval.bm25 import BM25Index
-from ..retrieval.fusion import ChannelHit, resolve_enterprise_weights, weighted_rrf
+from ..retrieval.fusion import ChannelHit, weighted_rrf
+from ..retrieval.weights import resolve_channel_weights
 from .graph import GraphStore
 from .vector import COLLECTION_NAME, QdrantVectorStore
 
@@ -95,7 +96,7 @@ class LocalIndex:
             for channel, scores in channel_scores.items()
             if channel in {"vector_dense_text", "vector_sparse", "vector_image", "graph"}
         }
-        weights, dat_diag = resolve_enterprise_weights(
+        weights, weight_diag = resolve_channel_weights(
             query,
             profile_path="",
             profile_meta_path=None,
@@ -132,7 +133,7 @@ class LocalIndex:
                 "channel_weights": weights,
                 "channel_enabled": {channel: bool(scores) for channel, scores in channel_scores.items()},
                 **fusion_debug,
-                **dat_diag,
+                **weight_diag,
             },
             "embedding_provider": getattr(vectors.embeddings, "provider_name", "unknown"),
             "embedding_model": self.settings.embed_model,

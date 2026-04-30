@@ -11,12 +11,13 @@ from aerospace_rag.config import Settings
 from aerospace_rag.generation.providers import route_generation_provider
 from aerospace_rag.models import Chunk
 from aerospace_rag.retrieval.extraction import KnowledgeExtractor
-from aerospace_rag.retrieval.fusion import ChannelHit, resolve_enterprise_weights, weighted_rrf
+from aerospace_rag.retrieval.fusion import ChannelHit, weighted_rrf
+from aerospace_rag.retrieval.weights import resolve_channel_weights
 from aerospace_rag.stores.graph import GraphStore
 from aerospace_rag.stores.vector import QdrantVectorStore
 
 
-class EnterpriseRagTests(unittest.TestCase):
+class RetrievalTests(unittest.TestCase):
     def test_generation_provider_rejects_non_core_provider_aliases(self) -> None:
         settings = Settings(llm_provider="extractive")
 
@@ -35,7 +36,7 @@ class EnterpriseRagTests(unittest.TestCase):
             profile.write_text(
                 json.dumps(
                     {
-                        "profile_id": "enterprise-qact",
+                        "profile_id": "ignored-profile",
                         "default_candidate_depth_selected": 42,
                         "default": {
                             "vector_dense_text": 0.2,
@@ -49,7 +50,7 @@ class EnterpriseRagTests(unittest.TestCase):
             )
             meta.write_text(json.dumps({"selection_run_type": "main"}), encoding="utf-8")
 
-            weights, diagnostics = resolve_enterprise_weights(
+            weights, diagnostics = resolve_channel_weights(
                 "Momentus solar sail contract",
                 profile_path=profile,
                 profile_meta_path=meta,

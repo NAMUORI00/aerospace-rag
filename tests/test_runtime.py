@@ -14,8 +14,8 @@ from aerospace_rag.retrieval.weights import resolve_channel_weights
 from aerospace_rag.stores.graph import GraphStore
 
 
-class SmartFarmCorePortTests(unittest.TestCase):
-    def test_dat_resolver_uses_static_core_weights_even_when_profile_exists(self) -> None:
+class RuntimeTests(unittest.TestCase):
+    def test_weight_resolver_uses_static_core_weights_even_when_profile_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             weights_path = root / "fusion_weights.json"
@@ -23,7 +23,7 @@ class SmartFarmCorePortTests(unittest.TestCase):
             weights_path.write_text(
                 json.dumps(
                     {
-                        "profile_id": "dat-test",
+                        "profile_id": "ignored-profile",
                         "default": {
                             "vector_dense_text": 0.2,
                             "vector_sparse": 0.7,
