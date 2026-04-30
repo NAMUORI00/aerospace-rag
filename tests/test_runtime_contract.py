@@ -30,6 +30,9 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_extract_timeout_seconds, 3600)
         self.assertEqual(settings.ollama_generate_timeout_seconds, 3600)
         self.assertEqual(settings.ollama_keep_alive, "10m")
+        self.assertEqual(settings.ollama_extract_repair_retries, 1)
+        self.assertEqual(settings.ollama_extract_num_predict, 4096)
+        self.assertEqual(settings.ollama_extract_max_chars, 1200)
         self.assertEqual(settings.extractor_provider, "ollama")
         self.assertFalse(hasattr(settings, "extractor_fallback_on_error"))
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
@@ -48,6 +51,7 @@ class RuntimeContractTests(unittest.TestCase):
                 "OLLAMA_GENERATE_TIMEOUT_SECONDS": "360",
                 "OLLAMA_KEEP_ALIVE": "15m",
                 "OLLAMA_EXTRACT_RETRIES": "2",
+                "OLLAMA_EXTRACT_REPAIR_RETRIES": "3",
                 "OLLAMA_EXTRACT_NUM_PREDICT": "768",
                 "OLLAMA_ANSWER_NUM_PREDICT": "1200",
                 "OLLAMA_EXTRACT_MAX_CHARS": "2500",
@@ -60,6 +64,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_generate_timeout_seconds, 360)
         self.assertEqual(settings.ollama_keep_alive, "15m")
         self.assertEqual(settings.ollama_extract_retries, 2)
+        self.assertEqual(settings.ollama_extract_repair_retries, 3)
         self.assertEqual(settings.ollama_extract_num_predict, 768)
         self.assertEqual(settings.ollama_answer_num_predict, 1200)
         self.assertEqual(settings.ollama_extract_max_chars, 2500)

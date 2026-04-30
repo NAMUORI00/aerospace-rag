@@ -228,9 +228,78 @@ class RetrievalTests(unittest.TestCase):
 
         payload = observed["payload"]
         self.assertEqual(observed["timeout"], 420)
+        self.assertIsInstance(payload["format"], dict)
+        self.assertEqual(payload["format"]["type"], "object")
+        self.assertFalse(payload["format"]["additionalProperties"])
+        self.assertIn("entities", payload["format"]["required"])
+        self.assertIn("relations", payload["format"]["required"])
+        self.assertEqual(payload["format"]["properties"]["entities"]["maxItems"], 24)
+        self.assertEqual(payload["format"]["properties"]["relations"]["maxItems"], 48)
+        self.assertIn("JSON Schema", payload["messages"][0]["content"])
         self.assertEqual(payload["keep_alive"], "15m")
         self.assertFalse(payload["think"])
         self.assertEqual(payload["options"]["num_predict"], 768)
+
+    def test_ollama_extractor_repairs_malformed_json_with_ollama(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        observed_payloads: list[dict[str, object]] = []
+
+        class FakeResponse:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return json.dumps({"message": {"content": self.content}}).encode("utf-8")
+
+        responses = [
+            FakeResponse('{"entities":[{"canonical_id":"NASA","text":"NASA","type":"Agency","confidence":1.0}],"relations":[{"source":"NASA","target":"Momentus","type":"AWARDED","evidence":"unfinished}]}'),
+            FakeResponse(
+                json.dumps(
+                    {
+                        "entities": [
+                            {"canonical_id": "NASA", "text": "NASA", "type": "Agency", "confidence": 1.0},
+                            {"canonical_id": "Momentus", "text": "Momentus", "type": "Company", "confidence": 1.0},
+                        ],
+                        "relations": [
+                            {
+                                "source": "NASA",
+                                "target": "Momentus",
+                                "type": "AWARDED_CONTRACT_TO",
+                                "confidence": 1.0,
+                                "evidence": "memo",
+                            }
+                        ],
+                    }
+                )
+            ),
+        ]
+
+        def fake_urlopen(req: object, timeout: int) -> FakeResponse:
+            _ = timeout
+            observed_payloads.append(json.loads(req.data.decode("utf-8")))  # type: ignore[attr-defined]
+            return responses.pop(0)
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = KnowledgeExtractor(
+                settings=Settings(
+                    ollama_base_url="http://127.0.0.1:11434",
+                    ollama_model="qwen2.5:7b",
+                    extractor_provider="ollama",
+                    ollama_extract_retries=0,
+                    ollama_extract_repair_retries=1,
+                )
+            ).extract(chunk)
+
+        self.assertEqual(len(observed_payloads), 2)
+        self.assertIn("Repair this malformed JSON", observed_payloads[1]["messages"][1]["content"])
+        self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
+        self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
 
 
 if __name__ == "__main__":

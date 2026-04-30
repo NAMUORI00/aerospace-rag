@@ -64,6 +64,46 @@ _ENTITY_TYPE_HINTS = {
 }
 
 
+EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["entities", "relations"],
+    "properties": {
+        "entities": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["canonical_id", "text", "type", "confidence"],
+                "properties": {
+                    "canonical_id": {"type": "string", "maxLength": 120},
+                    "text": {"type": "string", "maxLength": 120},
+                    "type": {"type": "string", "maxLength": 64},
+                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                },
+            },
+        },
+        "relations": {
+            "type": "array",
+            "maxItems": 48,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["source", "target", "type", "confidence", "evidence"],
+                "properties": {
+                    "source": {"type": "string", "maxLength": 120},
+                    "target": {"type": "string", "maxLength": 120},
+                    "type": {"type": "string", "maxLength": 64},
+                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "evidence": {"type": "string", "maxLength": 240},
+                },
+            },
+        },
+    },
+}
+
+
 @dataclass(frozen=True)
 class ExtractedEntity:
     canonical_id: str
@@ -179,20 +219,28 @@ class KnowledgeExtractor:
         model = str(self.settings.ollama_model or "").strip()
         if not base_url or not model:
             raise RuntimeError("Ollama extraction requires OLLAMA_BASE_URL and OLLAMA_MODEL.")
-        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 3000))
+        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 1200))
         chunk_text = chunk.text[:max_chars]
+        schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
+        system_prompt = (
+            "You extract compact aerospace retrieval knowledge. Return only one minified JSON object. "
+            "The response must validate against this JSON Schema. Do not include markdown or commentary.\n"
+            f"JSON Schema: {schema_text}"
+        )
         prompt = (
-            "Extract aerospace RAG knowledge as strict JSON with keys entities and relations. "
-            "Entity fields: canonical_id,text,type,confidence. "
-            "Relation fields: source,target,type,confidence,evidence. "
-            "Use canonical_id values in relation source/target.\n\n"
+            "Extract entities and relations from this chunk. "
+            "Use canonical_id values in relation source/target. "
+            "If there is no reliable item, return empty arrays.\n\n"
             f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk_text}"
         )
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
             "stream": False,
-            "format": "json",
+            "format": EXTRACTION_JSON_SCHEMA,
             "think": False,
             "keep_alive": str(self.settings.ollama_keep_alive or "10m"),
             "options": {
@@ -208,17 +256,16 @@ class KnowledgeExtractor:
         last_error: Exception | None = None
         parsed: dict[str, Any] | None = None
         for _ in range(attempts):
-            req = urllib.request.Request(
-                base_url + "/api/chat",
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as response:
-                    body = json.loads(response.read().decode("utf-8"))
-                content = str(((body.get("message") or {}).get("content")) or "")
-                parsed = parse_llm_json_object(content)
+                content = self._ollama_chat(base_url=base_url, payload=payload, headers=headers, timeout=timeout)
+                parsed = self._parse_or_repair_json(
+                    content,
+                    base_url=base_url,
+                    model=model,
+                    headers=headers,
+                    timeout=timeout,
+                    system_prompt=system_prompt,
+                )
                 break
             except Exception as exc:
                 last_error = exc
@@ -261,6 +308,70 @@ class KnowledgeExtractor:
                 )
             )
         return ExtractionResult(entities=entities[:64], relations=relations[:128])
+
+    def _ollama_chat(
+        self,
+        *,
+        base_url: str,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+    ) -> str:
+        req = urllib.request.Request(
+            base_url + "/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        return str(((body.get("message") or {}).get("content")) or "")
+
+    def _parse_or_repair_json(
+        self,
+        content: str,
+        *,
+        base_url: str,
+        model: str,
+        headers: dict[str, str],
+        timeout: int,
+        system_prompt: str,
+    ) -> dict[str, Any]:
+        try:
+            return parse_llm_json_object(content)
+        except Exception as exc:
+            last_error: Exception = exc
+
+        repair_retries = max(0, int(self.settings.ollama_extract_repair_retries or 0))
+        for _ in range(repair_retries):
+            repair_payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Repair this malformed JSON so it validates against the schema. "
+                            "Return only the repaired minified JSON object.\n\n"
+                            f"Malformed JSON:\n{content[:12000]}"
+                        ),
+                    },
+                ],
+                "stream": False,
+                "format": EXTRACTION_JSON_SCHEMA,
+                "think": False,
+                "keep_alive": str(self.settings.ollama_keep_alive or "10m"),
+                "options": {
+                    "temperature": 0.0,
+                    "num_predict": max(128, int(self.settings.ollama_extract_num_predict or 4096)),
+                },
+            }
+            try:
+                repaired = self._ollama_chat(base_url=base_url, payload=repair_payload, headers=headers, timeout=timeout)
+                return parse_llm_json_object(repaired)
+            except Exception as exc:
+                last_error = exc
+        raise last_error
 
     def _extract_local_debug(self, chunk: Chunk) -> ExtractionResult:
         entity_texts = extract_entity_texts(chunk)

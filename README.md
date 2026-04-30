@@ -21,7 +21,7 @@ python -m venv .venv
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/NAMUORI00/aerospace-rag/blob/main/notebooks/aerospace_rag_colab_ui.ipynb)
 
-Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `gemma4:e2b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks. Its indexing default is strict Ollama extraction with one-hour timeout limits and no local fallback.
+Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `qwen2.5:7b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks. Its indexing default is strict Ollama extraction with one-hour timeout limits, JSON Schema structured output, one Ollama repair attempt for malformed JSON, and no local fallback.
 
 By default, put files directly into the Colab file panel under `aerospace-rag/data`.
 
@@ -97,7 +97,7 @@ $env:OLLAMA_API_KEY="<your-ollama-api-key>"
 - Qdrant stores canonical payload keys such as `canonical_doc_id`, `canonical_chunk_id`, `doc_id`, and `chunk_id`.
 - Vector retrieval exposes `dense_text`, `dense_image`, and `sparse` channels. `AEROSPACE_VECTOR_BACKEND=json` is an explicit debug mode for tests and lightweight smoke runs.
 - Graph retrieval is graph-lite only and reads `data/index/graph/graph_index.json`.
-- Knowledge extraction uses Ollama by default. Colab sets `EXTRACTOR_LLM_BACKEND=ollama`, `OLLAMA_EXTRACT_TIMEOUT_SECONDS=3600`, `OLLAMA_GENERATE_TIMEOUT_SECONDS=3600`, `OLLAMA_EXTRACT_RETRIES=1`, and generation limits. There is no automatic local fallback in the Colab flow.
+- Knowledge extraction uses Ollama by default. Colab sets `EXTRACTOR_LLM_BACKEND=ollama`, `OLLAMA_EXTRACT_TIMEOUT_SECONDS=3600`, `OLLAMA_GENERATE_TIMEOUT_SECONDS=3600`, `OLLAMA_EXTRACT_RETRIES=1`, `OLLAMA_EXTRACT_REPAIR_RETRIES=1`, and generation limits. Extraction requests use JSON Schema structured output, and there is no automatic local fallback in the Colab flow.
 - Fusion uses fixed query-segment weights, evidence adjustment, and weighted RRF.
 - Query diagnostics include `embedding_provider`, `embedding_model`, `channel_weights`, `weights_source`, `query_segment`, and channel enablement.
 

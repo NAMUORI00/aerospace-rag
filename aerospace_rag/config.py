@@ -32,9 +32,10 @@ class Settings:
     ollama_extract_timeout_seconds: int = 3600
     ollama_generate_timeout_seconds: int = 3600
     ollama_extract_retries: int = 1
-    ollama_extract_num_predict: int = 768
+    ollama_extract_repair_retries: int = 1
+    ollama_extract_num_predict: int = 4096
     ollama_answer_num_predict: int = 1024
-    ollama_extract_max_chars: int = 3000
+    ollama_extract_max_chars: int = 1200
     extractor_provider: str = "ollama"
 
     @classmethod
@@ -57,8 +58,9 @@ class Settings:
             ollama_extract_timeout_seconds=_env_int("OLLAMA_EXTRACT_TIMEOUT_SECONDS", 3600),
             ollama_generate_timeout_seconds=_env_int("OLLAMA_GENERATE_TIMEOUT_SECONDS", 3600),
             ollama_extract_retries=_env_int("OLLAMA_EXTRACT_RETRIES", 1),
-            ollama_extract_num_predict=_env_int("OLLAMA_EXTRACT_NUM_PREDICT", 768),
+            ollama_extract_repair_retries=_env_int("OLLAMA_EXTRACT_REPAIR_RETRIES", 1),
+            ollama_extract_num_predict=_env_int("OLLAMA_EXTRACT_NUM_PREDICT", 4096),
             ollama_answer_num_predict=_env_int("OLLAMA_ANSWER_NUM_PREDICT", 1024),
-            ollama_extract_max_chars=_env_int("OLLAMA_EXTRACT_MAX_CHARS", 3000),
+            ollama_extract_max_chars=_env_int("OLLAMA_EXTRACT_MAX_CHARS", 1200),
             extractor_provider=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_PROVIDER", "ollama")),
         )
