@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 import tempfile
 import unittest
@@ -26,6 +27,10 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_model, "gemma4:e2b")
         self.assertEqual(settings.ollama_base_url, "http://127.0.0.1:11434")
         self.assertEqual(settings.ollama_api_key, "")
+        self.assertEqual(settings.ollama_extract_timeout_seconds, 300)
+        self.assertEqual(settings.ollama_generate_timeout_seconds, 300)
+        self.assertEqual(settings.ollama_keep_alive, "10m")
+        self.assertFalse(settings.extractor_fallback_on_error)
         self.assertEqual(settings.extractor_provider, "ollama")
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
@@ -34,6 +39,32 @@ class RuntimeContractTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"OLLAMA_API_KEY": "test-token"}, clear=True):
             self.assertEqual(Settings.from_env().ollama_api_key, "test-token")
+
+    def test_settings_read_ollama_timeout_controls_from_environment(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "OLLAMA_EXTRACT_TIMEOUT_SECONDS": "420",
+                "OLLAMA_GENERATE_TIMEOUT_SECONDS": "360",
+                "OLLAMA_KEEP_ALIVE": "15m",
+                "OLLAMA_EXTRACT_RETRIES": "2",
+                "OLLAMA_EXTRACT_NUM_PREDICT": "768",
+                "OLLAMA_ANSWER_NUM_PREDICT": "1200",
+                "OLLAMA_EXTRACT_MAX_CHARS": "2500",
+                "EXTRACTOR_FALLBACK_ON_ERROR": "true",
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.ollama_extract_timeout_seconds, 420)
+        self.assertEqual(settings.ollama_generate_timeout_seconds, 360)
+        self.assertEqual(settings.ollama_keep_alive, "15m")
+        self.assertEqual(settings.ollama_extract_retries, 2)
+        self.assertEqual(settings.ollama_extract_num_predict, 768)
+        self.assertEqual(settings.ollama_answer_num_predict, 1200)
+        self.assertEqual(settings.ollama_extract_max_chars, 2500)
+        self.assertTrue(settings.extractor_fallback_on_error)
 
     def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:
         with patch.dict(sys.modules, {"sentence_transformers": None}):
@@ -80,6 +111,45 @@ class RuntimeContractTests(unittest.TestCase):
                 provider="ollama",
                 settings=Settings(ollama_base_url="http://127.0.0.1:1", ollama_model="gemma4:e2b"),
             )
+
+    def test_ollama_generation_uses_configured_timeout_and_generation_limits(self) -> None:
+        chunk = Chunk("c1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        hit = RetrievalHit(chunk=chunk, score=1.0, channels={"qdrant": 1.0})
+        observed: dict[str, object] = {}
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return json.dumps({"message": {"content": "답변"}}).encode("utf-8")
+
+        def fake_urlopen(req: object, timeout: int) -> FakeResponse:
+            observed["timeout"] = timeout
+            observed["payload"] = json.loads(req.data.decode("utf-8"))  # type: ignore[attr-defined]
+            return FakeResponse()
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            answer = generate_answer(
+                "계약은?",
+                [hit],
+                provider="ollama",
+                settings=Settings(
+                    ollama_generate_timeout_seconds=420,
+                    ollama_answer_num_predict=900,
+                    ollama_keep_alive="15m",
+                ),
+            )
+
+        payload = observed["payload"]
+        self.assertEqual(answer, "답변")
+        self.assertEqual(observed["timeout"], 420)
+        self.assertEqual(payload["keep_alive"], "15m")
+        self.assertFalse(payload["think"])
+        self.assertEqual(payload["options"]["num_predict"], 900)
 
     def test_ollama_knowledge_extractor_raises_without_explicit_local_debug_mode(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")

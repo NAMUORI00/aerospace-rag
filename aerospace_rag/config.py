@@ -4,6 +4,23 @@ import os
 from dataclasses import dataclass
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     embed_backend: str = "sentence_transformers"
@@ -18,7 +35,15 @@ class Settings:
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma4:e2b"
     ollama_api_key: str = ""
+    ollama_keep_alive: str = "10m"
+    ollama_extract_timeout_seconds: int = 300
+    ollama_generate_timeout_seconds: int = 300
+    ollama_extract_retries: int = 1
+    ollama_extract_num_predict: int = 768
+    ollama_answer_num_predict: int = 1024
+    ollama_extract_max_chars: int = 3000
     extractor_provider: str = "ollama"
+    extractor_fallback_on_error: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -36,5 +61,13 @@ class Settings:
             ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_model=os.environ.get("OLLAMA_MODEL", os.environ.get("GEMMA4_MODEL", "gemma4:e2b")),
             ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
+            ollama_keep_alive=os.environ.get("OLLAMA_KEEP_ALIVE", "10m"),
+            ollama_extract_timeout_seconds=_env_int("OLLAMA_EXTRACT_TIMEOUT_SECONDS", 300),
+            ollama_generate_timeout_seconds=_env_int("OLLAMA_GENERATE_TIMEOUT_SECONDS", 300),
+            ollama_extract_retries=_env_int("OLLAMA_EXTRACT_RETRIES", 1),
+            ollama_extract_num_predict=_env_int("OLLAMA_EXTRACT_NUM_PREDICT", 768),
+            ollama_answer_num_predict=_env_int("OLLAMA_ANSWER_NUM_PREDICT", 1024),
+            ollama_extract_max_chars=_env_int("OLLAMA_EXTRACT_MAX_CHARS", 3000),
             extractor_provider=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_PROVIDER", "ollama")),
+            extractor_fallback_on_error=_env_bool("EXTRACTOR_FALLBACK_ON_ERROR", False),
         )

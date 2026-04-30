@@ -61,7 +61,12 @@ def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) 
             {"role": "user", "content": _build_prompt(question, hits)},
         ],
         "stream": False,
-        "options": {"temperature": 0.1},
+        "think": False,
+        "keep_alive": str(settings.ollama_keep_alive or "10m"),
+        "options": {
+            "temperature": 0.1,
+            "num_predict": max(128, int(settings.ollama_answer_num_predict or 1024)),
+        },
     }
     req = urllib.request.Request(
         url,
@@ -70,7 +75,7 @@ def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) 
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as response:
+        with urllib.request.urlopen(req, timeout=max(1, int(settings.ollama_generate_timeout_seconds or 300))) as response:
             body = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         raise OllamaGenerationError(

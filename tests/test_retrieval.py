@@ -170,6 +170,71 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
         self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
 
+    def test_ollama_extractor_can_fallback_after_timeout_for_colab_indexing(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            result = KnowledgeExtractor(
+                settings=Settings(
+                    ollama_base_url="http://127.0.0.1:11434",
+                    ollama_model="gemma4:e2b",
+                    extractor_provider="ollama",
+                    extractor_fallback_on_error=True,
+                    ollama_extract_retries=1,
+                )
+            ).extract(chunk)
+
+        self.assertIn("NASA", [entity.text for entity in result.entities])
+        self.assertIn("Momentus", [entity.text for entity in result.entities])
+
+    def test_ollama_extractor_uses_configured_timeout_and_generation_limits(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        observed: dict[str, object] = {}
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return json.dumps(
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "entities": [{"canonical_id": "NASA", "text": "NASA", "type": "Agency"}],
+                                    "relations": [],
+                                }
+                            )
+                        }
+                    }
+                ).encode("utf-8")
+
+        def fake_urlopen(req: object, timeout: int) -> FakeResponse:
+            observed["timeout"] = timeout
+            observed["payload"] = json.loads(req.data.decode("utf-8"))  # type: ignore[attr-defined]
+            return FakeResponse()
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            KnowledgeExtractor(
+                settings=Settings(
+                    ollama_base_url="http://127.0.0.1:11434",
+                    ollama_model="gemma4:e2b",
+                    extractor_provider="ollama",
+                    ollama_extract_timeout_seconds=420,
+                    ollama_extract_num_predict=768,
+                    ollama_keep_alive="15m",
+                )
+            ).extract(chunk)
+
+        payload = observed["payload"]
+        self.assertEqual(observed["timeout"], 420)
+        self.assertEqual(payload["keep_alive"], "15m")
+        self.assertFalse(payload["think"])
+        self.assertEqual(payload["options"]["num_predict"], 768)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -179,39 +179,57 @@ class KnowledgeExtractor:
         model = str(self.settings.ollama_model or "").strip()
         if not base_url or not model:
             raise RuntimeError("Ollama extraction requires OLLAMA_BASE_URL and OLLAMA_MODEL.")
+        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 3000))
+        chunk_text = chunk.text[:max_chars]
         prompt = (
             "Extract aerospace RAG knowledge as strict JSON with keys entities and relations. "
             "Entity fields: canonical_id,text,type,confidence. "
             "Relation fields: source,target,type,confidence,evidence. "
             "Use canonical_id values in relation source/target.\n\n"
-            f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk.text[:6000]}"
+            f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk_text}"
         )
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.0},
+            "think": False,
+            "keep_alive": str(self.settings.ollama_keep_alive or "10m"),
+            "options": {
+                "temperature": 0.0,
+                "num_predict": max(128, int(self.settings.ollama_extract_num_predict or 768)),
+            },
         }
         headers = {"Content-Type": "application/json"}
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
-        req = urllib.request.Request(
-            base_url + "/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=90) as response:
-                body = json.loads(response.read().decode("utf-8"))
-            content = str(((body.get("message") or {}).get("content")) or "")
-            parsed = parse_llm_json_object(content)
-        except Exception as exc:
+        timeout = max(1, int(self.settings.ollama_extract_timeout_seconds or 300))
+        attempts = max(0, int(self.settings.ollama_extract_retries or 0)) + 1
+        last_error: Exception | None = None
+        parsed: dict[str, Any] | None = None
+        for _ in range(attempts):
+            req = urllib.request.Request(
+                base_url + "/api/chat",
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                content = str(((body.get("message") or {}).get("content")) or "")
+                parsed = parse_llm_json_object(content)
+                break
+            except Exception as exc:
+                last_error = exc
+        if parsed is None:
+            if self.settings.extractor_fallback_on_error:
+                return self._extract_local_debug(chunk)
             raise RuntimeError(
                 "Ollama knowledge extraction failed. Start Ollama, pull the configured model, "
-                "or explicitly set EXTRACTOR_LLM_BACKEND=local_fallback for debug indexing."
-            ) from exc
+                "increase OLLAMA_EXTRACT_TIMEOUT_SECONDS, or set EXTRACTOR_FALLBACK_ON_ERROR=true "
+                "to keep Colab indexing running."
+            ) from last_error
         entities = []
         for item in parsed.get("entities") or []:
             if not isinstance(item, dict):
