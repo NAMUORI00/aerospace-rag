@@ -101,3 +101,5 @@ class BuildResult:
     graph_index_path: Path
     bm25_path: Path
     chunks_path: Path
+    fusion_profile_path: Path | None = None
+    fusion_profile_meta_path: Path | None = None

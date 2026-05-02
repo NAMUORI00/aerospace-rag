@@ -89,6 +89,7 @@ Supported file types:
 - `data/index/graph/graph_index.json`: graph-lite retrieval helper index
 - `data/index/bm25.json`: keyword retrieval index
 - `data/index/chunks.jsonl`: normalized source chunks
+- `data/index/fusion_weights.runtime.json`, `data/index/fusion_profile_meta.runtime.json`: self-calibrated fixed fusion profile used by runtime weighted RRF
 
 ## Query
 
@@ -132,7 +133,7 @@ $env:OLLAMA_API_KEY="<your-ollama-api-key>"
 - Vector retrieval exposes `dense_text`, `dense_image`, and `sparse` channels. `AEROSPACE_VECTOR_BACKEND=json` is an explicit debug mode for tests and lightweight smoke runs.
 - Graph retrieval is graph-lite only and reads `data/index/graph/graph_index.json`.
 - Knowledge extraction uses Ollama by default. Colab sets `EXTRACTOR_LLM_BACKEND=ollama`, `OLLAMA_EXTRACT_TIMEOUT_SECONDS=3600`, `OLLAMA_GENERATE_TIMEOUT_SECONDS=3600`, `OLLAMA_EXTRACT_RETRIES=1`, `OLLAMA_EXTRACT_REPAIR_RETRIES=1`, and generation limits. Extraction requests use JSON Schema structured output, and there is no automatic local fallback in the Colab flow.
-- Fusion uses `fusion_weights.runtime.json` / `fusion_profile_meta.runtime.json` when present, falls back to fixed query-segment weights, applies evidence adjustment, and combines channels with weighted RRF.
+- Index build writes `fusion_weights.runtime.json` / `fusion_profile_meta.runtime.json` by self-calibrating channel weights against indexed chunks. Runtime retrieval reads that fixed profile, falls back to fixed query-segment weights only when the profile is missing or invalid, applies evidence adjustment, and combines channels with weighted RRF.
 - Query diagnostics include `embedding_provider`, `embedding_model`, `channel_weights`, `weights_source`, `query_segment`, and channel enablement.
 
 ## Artifact Export / Import

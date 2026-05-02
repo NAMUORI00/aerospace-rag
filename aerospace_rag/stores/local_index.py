@@ -71,6 +71,7 @@ class LocalIndex:
         self.bm25_path = self.index_dir / "bm25.json"
         self.graph = GraphStore(self.index_dir, settings=self.settings)
         self.last_diagnostics: dict[str, object] = {}
+        self._last_embedding_provider = "unknown"
 
     def _fusion_profile_path(self) -> Path:
         if str(self.settings.fusion_profile_path).strip():
@@ -98,13 +99,7 @@ class LocalIndex:
             vectors.close()
         self.graph.build(chunks, reset=reset)
 
-    def search(
-        self,
-        query: str,
-        *,
-        top_k: int = 8,
-    ) -> list[RetrievalHit]:
-        chunks = {chunk.chunk_id: chunk for chunk in read_chunks(self.chunks_path)}
+    def collect_channel_scores(self, query: str, *, limit: int) -> dict[str, dict[str, float]]:
         channel_scores: dict[str, dict[str, float]] = {
             "vector_dense_text": {},
             "vector_sparse": {},
@@ -113,23 +108,34 @@ class LocalIndex:
         }
         vectors = QdrantVectorStore(self.index_dir, settings=self.settings)
         try:
+            self._last_embedding_provider = getattr(vectors.embeddings, "provider_name", "unknown")
             vector_channels = vectors.search_channels(
                 query,
-                limit=max(top_k * 3, 12),
+                limit=limit,
             )
         finally:
             vectors.close()
         for channel in ("vector_dense_text", "vector_sparse", "vector_image"):
             channel_scores[channel].update(dict(vector_channels.get(channel) or []))
         if self.bm25_path.exists():
-            for chunk_id, score in BM25Index.load(self.bm25_path).search(query, limit=max(top_k * 3, 12)):
+            for chunk_id, score in BM25Index.load(self.bm25_path).search(query, limit=limit):
                 channel_scores["vector_sparse"][chunk_id] = max(channel_scores["vector_sparse"].get(chunk_id, 0.0), score)
         channel_scores["graph"] = dict(
             self.graph.search(
                 query,
-                limit=max(top_k * 3, 12),
+                limit=limit,
             )
         )
+        return channel_scores
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 8,
+    ) -> list[RetrievalHit]:
+        chunks = {chunk.chunk_id: chunk for chunk in read_chunks(self.chunks_path)}
+        channel_scores = self.collect_channel_scores(query, limit=max(top_k * 3, 12))
 
         channel_hit_counts = {
             channel: len(scores)
@@ -188,7 +194,7 @@ class LocalIndex:
                 **fusion_debug,
                 **weight_diag,
             },
-            "embedding_provider": getattr(vectors.embeddings, "provider_name", "unknown"),
+            "embedding_provider": self._last_embedding_provider,
             "embedding_model": self.settings.embed_model,
         }
         return hits

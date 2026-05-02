@@ -120,6 +120,10 @@ class RuntimeTests(unittest.TestCase):
 
             settings = Settings(embed_backend="hash", vector_backend="json", extractor_provider="local_fallback")
             result = build_index(data_dir=data, index_dir=index, strict_expected=False, settings=settings)
+            self.assertIsNotNone(result.fusion_profile_path)
+            self.assertIsNotNone(result.fusion_profile_meta_path)
+            self.assertTrue(result.fusion_profile_path.exists())
+            self.assertTrue(result.fusion_profile_meta_path.exists())
             response = ask(
                 "Momentus solar sail contract",
                 index_dir=index,
@@ -133,6 +137,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("include_private", response.routing)
         self.assertEqual(response.routing["retrieval"], "qdrant+bm25+graph-lite")
         self.assertIn("qdrant", response.diagnostics["channels"])
+        self.assertEqual(response.diagnostics["fusion"]["weights_source"], "runtime_profile")
+        self.assertNotIn("rerank_adjustments", response.diagnostics["fusion"])
         self.assertGreaterEqual(len(response.sources), 1)
 
     def test_local_index_loads_runtime_profile_from_index_dir(self) -> None:
