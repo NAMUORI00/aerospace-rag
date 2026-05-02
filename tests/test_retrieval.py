@@ -34,7 +34,7 @@ class RetrievalTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "provider"):
                 route_generation_provider(provider, settings=settings)
 
-    def test_weighted_rrf_uses_static_core_weights_and_evidence_adjustment(self) -> None:
+    def test_weighted_rrf_uses_runtime_profile_weights_and_evidence_adjustment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             profile = Path(tmp) / "fusion_weights.runtime.json"
             meta = Path(tmp) / "fusion_profile_meta.runtime.json"
@@ -53,7 +53,10 @@ class RetrievalTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            meta.write_text(json.dumps({"selection_run_type": "main"}), encoding="utf-8")
+            meta.write_text(
+                json.dumps({"selection_run_type": "main", "fusion_profile_id": "ignored-profile"}),
+                encoding="utf-8",
+            )
 
             weights, diagnostics = resolve_channel_weights(
                 "Momentus solar sail contract",
@@ -72,16 +75,47 @@ class RetrievalTests(unittest.TestCase):
                 return_debug=True,
             )
 
-        self.assertEqual(diagnostics["weights_source"], "static")
-        self.assertNotIn("fusion_profile_id", diagnostics)
+        self.assertEqual(diagnostics["weights_source"], "runtime_profile")
+        self.assertEqual(diagnostics["fusion_profile_id"], "ignored-profile")
+        self.assertEqual(diagnostics["candidate_depth"], 42)
         self.assertIn("graph_no_evidence", diagnostics["evidence_adjustments"])
         self.assertEqual(weights["graph"], 0.0)
         self.assertEqual(ranked[0].chunk_id, "shared-doc")
         self.assertIn("top_doc_channel_contributions", debug)
-        self.assertGreater(
+        self.assertLess(
             debug["top_doc_channel_contributions"]["shared-doc"]["vector_dense_text"],
             debug["top_doc_channel_contributions"]["shared-doc"]["vector_sparse"],
         )
+
+    def test_weight_resolver_rejects_non_main_runtime_profile_meta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "fusion_weights.runtime.json"
+            meta = Path(tmp) / "fusion_profile_meta.runtime.json"
+            profile.write_text(
+                json.dumps(
+                    {
+                        "profile_id": "draft-profile",
+                        "default": {
+                            "vector_dense_text": 0.2,
+                            "vector_sparse": 0.7,
+                            "vector_image": 0.0,
+                            "graph": 0.1,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            meta.write_text(json.dumps({"selection_run_type": "draft"}), encoding="utf-8")
+
+            weights, diagnostics = resolve_channel_weights(
+                "Momentus solar sail contract",
+                profile_path=profile,
+                profile_meta_path=meta,
+            )
+
+        self.assertEqual(diagnostics["weights_source"], "static")
+        self.assertIn("profile_invalid", diagnostics["profile_fallback_reasons"][0])
+        self.assertNotEqual(weights["bm25"], 0.7)
 
     def test_vector_store_requires_qdrant_unless_json_debug_mode_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -33,7 +33,7 @@ def normalize_channel_weights(weights: dict[str, float]) -> dict[str, float]:
         "vector_image": max(0.0, float(weights.get("vector_image", 0.0))),
         "graph": max(0.0, float(weights.get("graph", 0.0))),
     }
-    total = core["vector_dense_text"] + core["vector_sparse"] + core["graph"]
+    total = core["vector_dense_text"] + core["vector_sparse"] + core["vector_image"] + core["graph"]
     if total <= 0:
         core["vector_dense_text"] = 0.5
         core["vector_sparse"] = 0.5
@@ -41,6 +41,7 @@ def normalize_channel_weights(weights: dict[str, float]) -> dict[str, float]:
         total = 1.0
     core["vector_dense_text"] /= total
     core["vector_sparse"] /= total
+    core["vector_image"] /= total
     core["graph"] /= total
     out = dict(core)
     out["qdrant"] = out.get("vector_dense_text", 0.0)

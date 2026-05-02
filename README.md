@@ -132,7 +132,7 @@ $env:OLLAMA_API_KEY="<your-ollama-api-key>"
 - Vector retrieval exposes `dense_text`, `dense_image`, and `sparse` channels. `AEROSPACE_VECTOR_BACKEND=json` is an explicit debug mode for tests and lightweight smoke runs.
 - Graph retrieval is graph-lite only and reads `data/index/graph/graph_index.json`.
 - Knowledge extraction uses Ollama by default. Colab sets `EXTRACTOR_LLM_BACKEND=ollama`, `OLLAMA_EXTRACT_TIMEOUT_SECONDS=3600`, `OLLAMA_GENERATE_TIMEOUT_SECONDS=3600`, `OLLAMA_EXTRACT_RETRIES=1`, `OLLAMA_EXTRACT_REPAIR_RETRIES=1`, and generation limits. Extraction requests use JSON Schema structured output, and there is no automatic local fallback in the Colab flow.
-- Fusion uses fixed query-segment weights, evidence adjustment, and weighted RRF.
+- Fusion uses `fusion_weights.runtime.json` / `fusion_profile_meta.runtime.json` when present, falls back to fixed query-segment weights, applies evidence adjustment, and combines channels with weighted RRF.
 - Query diagnostics include `embedding_provider`, `embedding_model`, `channel_weights`, `weights_source`, `query_segment`, and channel enablement.
 
 ## Artifact Export / Import

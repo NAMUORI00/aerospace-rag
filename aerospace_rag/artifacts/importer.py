@@ -81,6 +81,8 @@ def import_artifact_manifest(
         "graph": index_dir / "graph",
         "bm25": index_dir,
         "chunks": index_dir,
+        "fusion_profile": index_dir,
+        "fusion_profile_meta": index_dir,
     }
     for label, target in targets.items():
         block = artifacts.get(label) or {}

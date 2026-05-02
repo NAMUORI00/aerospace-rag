@@ -8,7 +8,7 @@ from ..config import Settings
 from ..models import Chunk, RetrievalHit
 from ..retrieval.bm25 import BM25Index
 from ..retrieval.fusion import ChannelHit, weighted_rrf
-from ..retrieval.weights import resolve_channel_weights
+from ..retrieval.weights import FUSION_PROFILE_META_FILENAME, FUSION_WEIGHTS_FILENAME, resolve_channel_weights
 from ..text import tokenize
 from .graph import GraphStore
 from .vector import COLLECTION_NAME, QdrantVectorStore
@@ -72,6 +72,16 @@ class LocalIndex:
         self.graph = GraphStore(self.index_dir, settings=self.settings)
         self.last_diagnostics: dict[str, object] = {}
 
+    def _fusion_profile_path(self) -> Path:
+        if str(self.settings.fusion_profile_path).strip():
+            return Path(self.settings.fusion_profile_path)
+        return self.index_dir / FUSION_WEIGHTS_FILENAME
+
+    def _fusion_profile_meta_path(self) -> Path:
+        if str(self.settings.fusion_profile_meta_path).strip():
+            return Path(self.settings.fusion_profile_meta_path)
+        return self.index_dir / FUSION_PROFILE_META_FILENAME
+
     def build(self, chunks: list[Chunk], *, reset: bool = True) -> None:
         if reset and self.index_dir.exists():
             qdrant_dir = self.index_dir / "qdrant"
@@ -128,9 +138,11 @@ class LocalIndex:
         }
         weights, weight_diag = resolve_channel_weights(
             query,
-            profile_path="",
-            profile_meta_path=None,
-            mode="static",
+            profile_path=self._fusion_profile_path(),
+            profile_meta_path=self._fusion_profile_meta_path(),
+            mode=self.settings.fusion_mode,
+            min_weight=self.settings.fusion_min_weight,
+            max_weight=self.settings.fusion_max_weight,
             channel_hit_counts=channel_hit_counts,
         )
         ranked, fusion_debug = weighted_rrf(

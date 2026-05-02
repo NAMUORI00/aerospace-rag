@@ -16,7 +16,7 @@ from aerospace_rag.stores.local_index import LocalIndex
 
 
 class RuntimeTests(unittest.TestCase):
-    def test_weight_resolver_uses_static_core_weights_even_when_profile_exists(self) -> None:
+    def test_weight_resolver_uses_runtime_profile_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             weights_path = root / "fusion_weights.json"
@@ -43,8 +43,9 @@ class RuntimeTests(unittest.TestCase):
                 profile_meta_path=meta_path,
             )
 
-        self.assertEqual(diagnostics["weights_source"], "static")
-        self.assertNotEqual(weights["bm25"], 0.7)
+        self.assertEqual(diagnostics["weights_source"], "runtime_profile")
+        self.assertEqual(diagnostics["fusion_profile_scope"], "default")
+        self.assertAlmostEqual(weights["bm25"], 0.7)
 
     def test_graph_store_uses_extracted_relations_for_neighbor_search(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -82,6 +83,14 @@ class RuntimeTests(unittest.TestCase):
             (index_dir / "graph" / "graph_index.json").write_text("{}", encoding="utf-8")
             (index_dir / "bm25.json").write_text("{}", encoding="utf-8")
             (index_dir / "chunks.jsonl").write_text("{}", encoding="utf-8")
+            (index_dir / "fusion_weights.runtime.json").write_text(
+                json.dumps({"profile_id": "test-profile", "default": {"vector_dense_text": 0.4, "vector_sparse": 0.5, "graph": 0.1}}),
+                encoding="utf-8",
+            )
+            (index_dir / "fusion_profile_meta.runtime.json").write_text(
+                json.dumps({"selection_run_type": "main", "fusion_profile_id": "test-profile"}),
+                encoding="utf-8",
+            )
 
             manifest_path = build_artifact_manifest(index_dir=index_dir, output_dir=root / "export")
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -92,8 +101,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("graph", manifest["artifacts"])
         self.assertIn("bm25", manifest["artifacts"])
         self.assertIn("chunks", manifest["artifacts"])
+        self.assertIn("fusion_profile", manifest["artifacts"])
+        self.assertIn("fusion_profile_meta", manifest["artifacts"])
         self.assertIn("manifest_sha256", manifest)
         self.assertEqual(summary["artifacts"]["qdrant"]["copied_files"], 1)
+        self.assertEqual(summary["artifacts"]["fusion_profile"]["copied_files"], 1)
 
     def test_no_strict_ingest_can_build_and_query_with_explicit_json_vector_debug_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +134,40 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(response.routing["retrieval"], "qdrant+bm25+graph-lite")
         self.assertIn("qdrant", response.diagnostics["channels"])
         self.assertGreaterEqual(len(response.sources), 1)
+
+    def test_local_index_loads_runtime_profile_from_index_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(embed_backend="hash", embed_dim=384, vector_backend="json", extractor_provider="local_fallback")
+            index_dir = Path(tmp) / "index"
+            index = LocalIndex(index_dir, settings=settings)
+            index.build(
+                [
+                    Chunk("dense-doc", "NASA solar sail mission", "dense.txt", "text"),
+                    Chunk("sparse-doc", "Momentus contract award", "sparse.txt", "text"),
+                ]
+            )
+            (index_dir / "fusion_weights.runtime.json").write_text(
+                json.dumps(
+                    {
+                        "profile_id": "runtime-test",
+                        "default_candidate_depth_selected": 24,
+                        "default": {"vector_dense_text": 0.2, "vector_sparse": 0.7, "vector_image": 0.0, "graph": 0.1},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (index_dir / "fusion_profile_meta.runtime.json").write_text(
+                json.dumps({"selection_run_type": "main", "fusion_profile_id": "runtime-test"}),
+                encoding="utf-8",
+            )
+
+            hits = index.search("Momentus contract", top_k=2)
+
+        self.assertGreaterEqual(len(hits), 1)
+        fusion = index.last_diagnostics["fusion"]
+        self.assertEqual(fusion["weights_source"], "runtime_profile")
+        self.assertEqual(fusion["fusion_profile_id"], "runtime-test")
+        self.assertEqual(fusion["candidate_depth"], 24)
 
     def test_lexical_rerank_promotes_matching_structured_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
