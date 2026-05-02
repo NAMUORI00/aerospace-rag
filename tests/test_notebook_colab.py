@@ -11,7 +11,7 @@ NOTEBOOK = ROOT / "notebooks" / "aerospace_rag_colab_ui.ipynb"
 
 
 class NotebookColabTests(unittest.TestCase):
-    def test_notebook_uses_runtime_helper_and_keeps_user_flow(self) -> None:
+    def test_notebook_uses_runtime_helper_and_shows_knowledge_graph(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
         source = "\n".join(cell.source for cell in nb.cells)
         code_source = "\n".join(cell.source for cell in nb.cells if cell.cell_type == "code")
@@ -28,11 +28,15 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime", source)
         self.assertIn("from aerospace_rag.notebook_runtime import discover_data_files", source)
         self.assertIn("from IPython.display import HTML, Markdown, display", source)
-        self.assertIn("항공우주 RAG 실행 흐름", source)
-        self.assertIn("RAG_FLOW_HTML", code_source)
-        self.assertIn("문서 업로드", source)
-        self.assertIn("파싱/청킹", source)
-        self.assertIn("임베딩/Qdrant", source)
+        self.assertNotIn("항공우주 RAG 실행 흐름", source)
+        self.assertNotIn("RAG_FLOW_HTML", code_source)
+        self.assertNotIn("## 1A. RAG 원리 흐름", source)
+        self.assertIn("지식 데이터베이스 노드 보기", source)
+        self.assertIn("KNOWLEDGE_GRAPH_HTML", code_source)
+        self.assertIn("_knowledge_graph_html", code_source)
+        self.assertIn("entity 노드", source)
+        self.assertIn("chunk 노드", source)
+        self.assertIn("relation edge", source)
         self.assertIn("graph-lite", source)
         self.assertIn("weighted RRF", source)
         self.assertIn("format_answer_markdown", source)
@@ -83,7 +87,6 @@ class NotebookColabTests(unittest.TestCase):
             headings,
             [
                 "## 1. 실행 환경 확인",
-                "## 1A. RAG 원리 흐름",
                 "## 2. 프로젝트 소스 확보",
                 "## 3. 의존성 설치와 버전 고정 확인",
                 "## 4. 실행 설정 확정",
@@ -115,6 +118,11 @@ class NotebookColabTests(unittest.TestCase):
             "channel_weights",
             "query_segment",
             "top_doc_channel_contributions",
+            "KNOWLEDGE_GRAPH_HTML",
+            "지식 데이터베이스 노드 보기",
+            "entity 노드",
+            "chunk 노드",
+            "relation edge",
         ):
             self.assertIn(expected, source)
         for korean_phrase in (
@@ -124,10 +132,12 @@ class NotebookColabTests(unittest.TestCase):
             "채널별 결합 가중치",
             "질문 유형 분류",
             "한국어 표와 JSON preview",
+            "노드와 엣지 형태",
         ):
             self.assertIn(korean_phrase, source)
         self.assertIn("DATABASE_PREVIEW", code_source)
         self.assertIn("payload 샘플 2개", code_source)
+        self.assertIn("display(HTML(KNOWLEDGE_GRAPH_HTML))", code_source)
 
     def test_notebook_is_saved_without_runtime_outputs(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
