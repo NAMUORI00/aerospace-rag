@@ -12,6 +12,7 @@ from aerospace_rag.models import Chunk
 from aerospace_rag.pipeline import ask, build_index
 from aerospace_rag.retrieval.weights import resolve_channel_weights
 from aerospace_rag.stores.graph import GraphStore
+from aerospace_rag.stores.local_index import LocalIndex
 
 
 class RuntimeTests(unittest.TestCase):
@@ -121,6 +122,51 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(response.routing["retrieval"], "qdrant+bm25+graph-lite")
         self.assertIn("qdrant", response.diagnostics["channels"])
         self.assertGreaterEqual(len(response.sources), 1)
+
+    def test_lexical_rerank_promotes_matching_structured_chunks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(embed_backend="hash", vector_backend="json", extractor_provider="local_fallback")
+            index = LocalIndex(Path(tmp) / "index", settings=settings)
+            index.build(
+                [
+                    Chunk(
+                        chunk_id="qa-price",
+                        text="질문: 위성영상 표준가격 결정 답변: 표준가격 10% 할인 및 최대 90% 할인",
+                        source_file="인공위성_질문응답.xlsx",
+                        modality="qa",
+                        metadata={"keywords": "위성영상, 표준가격"},
+                    ),
+                    Chunk(
+                        chunk_id="price-table",
+                        text=(
+                            "| 구분 | 위성/모드 | 저장영상(AO) | 신규촬영(NTO) |\n"
+                            "| EO | K3 | $2,048, 2,867,200원 | $4,096, 5,734,400원 |"
+                        ),
+                        source_file="위성영상가격.png",
+                        modality="table",
+                        metadata={"title": "위성영상 가격표"},
+                    ),
+                    Chunk(
+                        chunk_id="gov-table",
+                        text=(
+                            "| 항목 | 미국 | 한국 |\n"
+                            "| 예산 투자 규모(23, 십억$) | 74.0 | 0.7 |\n"
+                            "| 우주개발 기관 인력(23, 명) | NASA 18,372 | KARI 1,004 |"
+                        ),
+                        source_file="해외정부 우주항공 현황.png",
+                        modality="table",
+                        metadata={"title": "해외정부 우주항공 현황표"},
+                    ),
+                ]
+            )
+
+            price_hits = index.search("위성영상 가격에서 저장영상과 신규촬영은 어떻게 다른가?", top_k=2)
+            gov_hits = index.search("국가별 우주항공 예산과 인력 현황은?", top_k=2)
+
+        self.assertEqual(price_hits[0].chunk.source_file, "위성영상가격.png")
+        self.assertIn("$4,096", price_hits[0].chunk.text)
+        self.assertEqual(gov_hits[0].chunk.source_file, "해외정부 우주항공 현황.png")
+        self.assertIn("NASA 18,372", gov_hits[0].chunk.text)
 
 
 if __name__ == "__main__":
