@@ -20,11 +20,21 @@ class NotebookColabTests(unittest.TestCase):
         self.assertTrue(colab.get("include_colab_link"))
         self.assertTrue(colab.get("toc_visible"))
         self.assertIn("colab.research.google.com/github/NAMUORI00/aerospace-rag", source)
+        self.assertIn("smartfarm-workspace", source)
+        self.assertIn("Google Colab T4", source)
+        self.assertIn("/content/aerospace-rag/data", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_valid_cwd, git_output", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_dependencies", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime", source)
         self.assertIn("from aerospace_rag.notebook_runtime import discover_data_files", source)
         self.assertIn("from IPython.display import HTML, Markdown, display", source)
+        self.assertIn("항공우주 RAG 실행 흐름", source)
+        self.assertIn("RAG_FLOW_HTML", code_source)
+        self.assertIn("문서 업로드", source)
+        self.assertIn("파싱/청킹", source)
+        self.assertIn("임베딩/Qdrant", source)
+        self.assertIn("graph-lite", source)
+        self.assertIn("weighted RRF", source)
         self.assertIn("format_answer_markdown", source)
         self.assertIn("format_retrieval_markdown", source)
         self.assertIn("format_sources_markdown", source)
@@ -45,6 +55,8 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("GITHUB_REPO_URL", source)
         self.assertIn("DATA_MANIFEST", source)
         self.assertIn("ingest_data(DATA_DIR, strict_expected=False)", source)
+        self.assertIn("INDEX_ARTIFACTS", source)
+        self.assertIn("Missing index artifacts", source)
         self.assertIn("LocalIndex", source)
         self.assertIn("ACTUAL_RAG_QUESTIONS", source)
         self.assertIn("display(Markdown(format_answer_markdown(response)))", source)
@@ -71,6 +83,7 @@ class NotebookColabTests(unittest.TestCase):
             headings,
             [
                 "## 1. 실행 환경 확인",
+                "## 1A. RAG 원리 흐름",
                 "## 2. 프로젝트 소스 확보",
                 "## 3. 의존성 설치와 버전 고정 확인",
                 "## 4. 실행 설정 확정",
@@ -78,6 +91,7 @@ class NotebookColabTests(unittest.TestCase):
                 "## 6. 데이터 파일 준비",
                 "## 7. 수집/파싱 단독 확인",
                 "## 8. 인덱스 생성",
+                "## 8A. 도메인 데이터베이스 저장 구조 이해",
                 "## 9. 검색 단독 검증",
                 "## 10. LLM 답변 생성",
                 "## 11. 근거 확인",
@@ -85,6 +99,35 @@ class NotebookColabTests(unittest.TestCase):
                 "## 13. 실제 업무파일 RAG 검증",
             ],
         )
+
+    def test_notebook_explains_domain_database_storage(self) -> None:
+        nb = nbformat.read(NOTEBOOK, as_version=4)
+        source = "\n".join(cell.source for cell in nb.cells)
+        code_source = "\n".join(cell.source for cell in nb.cells if cell.cell_type == "code")
+
+        self.assertIn("## 8A. 도메인 데이터베이스 저장 구조 이해", source)
+        for expected in (
+            "chunks.jsonl",
+            "bm25.json",
+            "graph_index.json",
+            "entity_to_chunks",
+            "relations",
+            "channel_weights",
+            "query_segment",
+            "top_doc_channel_contributions",
+        ):
+            self.assertIn(expected, source)
+        for korean_phrase in (
+            "원문 조각의 표준 payload 저장소",
+            "도메인 데이터베이스 저장 구조",
+            "modality별 chunk 수",
+            "채널별 결합 가중치",
+            "질문 유형 분류",
+            "한국어 표와 JSON preview",
+        ):
+            self.assertIn(korean_phrase, source)
+        self.assertIn("DATABASE_PREVIEW", code_source)
+        self.assertIn("payload 샘플 2개", code_source)
 
     def test_notebook_is_saved_without_runtime_outputs(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
