@@ -9,6 +9,18 @@ from ..models import Chunk
 from ..text import tokenize
 
 
+def _searchable_text(chunk: Chunk) -> str:
+    metadata = chunk.metadata or {}
+    extras = [
+        chunk.source_file,
+        str(metadata.get("title") or ""),
+        str(metadata.get("category") or ""),
+        str(metadata.get("keywords") or ""),
+        str(metadata.get("source") or ""),
+    ]
+    return "\n".join(part for part in [chunk.text, *extras] if part)
+
+
 class BM25Index:
     def __init__(self, *, chunk_ids: list[str], documents: list[list[str]]) -> None:
         self.chunk_ids = chunk_ids
@@ -25,7 +37,7 @@ class BM25Index:
 
     @classmethod
     def build(cls, chunks: list[Chunk]) -> "BM25Index":
-        return cls(chunk_ids=[c.chunk_id for c in chunks], documents=[tokenize(c.text) for c in chunks])
+        return cls(chunk_ids=[c.chunk_id for c in chunks], documents=[tokenize(_searchable_text(c)) for c in chunks])
 
     def save(self, path: str | Path) -> None:
         payload = {

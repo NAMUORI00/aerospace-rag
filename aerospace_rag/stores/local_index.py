@@ -9,8 +9,38 @@ from ..models import Chunk, RetrievalHit
 from ..retrieval.bm25 import BM25Index
 from ..retrieval.fusion import ChannelHit, weighted_rrf
 from ..retrieval.weights import resolve_channel_weights
+from ..text import tokenize
 from .graph import GraphStore
 from .vector import COLLECTION_NAME, QdrantVectorStore
+
+
+def _chunk_search_text(chunk: Chunk) -> str:
+    metadata = chunk.metadata or {}
+    return "\n".join(
+        part
+        for part in [
+            chunk.text,
+            chunk.source_file,
+            str(metadata.get("title") or ""),
+            str(metadata.get("category") or ""),
+            str(metadata.get("keywords") or ""),
+        ]
+        if part
+    )
+
+
+def _lexical_rerank_bonus(query: str, chunk: Chunk | None) -> float:
+    if chunk is None:
+        return 0.0
+    query_tokens = set(tokenize(query))
+    chunk_tokens = set(tokenize(_chunk_search_text(chunk)))
+    if not query_tokens or not chunk_tokens:
+        return 0.0
+    overlap = query_tokens & chunk_tokens
+    if not overlap:
+        return 0.0
+    coverage = len(overlap) / max(1, len(query_tokens))
+    return min(0.008, 0.012 * coverage)
 
 
 def write_chunks(chunks: list[Chunk], path: str | Path) -> None:
@@ -112,6 +142,16 @@ class LocalIndex:
             limit=max(top_k * 2, top_k),
             return_debug=True,
         )
+        rerank_adjustments: dict[str, float] = {}
+        adjusted_ranked: list[ChannelHit] = []
+        for ranked_hit in ranked:
+            bonus = _lexical_rerank_bonus(query, chunks.get(ranked_hit.chunk_id))
+            if bonus:
+                rerank_adjustments[ranked_hit.chunk_id] = bonus
+            adjusted_ranked.append(ChannelHit(ranked_hit.chunk_id, float(ranked_hit.score) + bonus))
+        if rerank_adjustments:
+            ranked = sorted(adjusted_ranked, key=lambda hit: hit.score, reverse=True)
+            fusion_debug["rerank_adjustments"] = {"lexical_coverage": rerank_adjustments}
         hits: list[RetrievalHit] = []
         for ranked_hit in ranked:
             chunk = chunks.get(ranked_hit.chunk_id)
