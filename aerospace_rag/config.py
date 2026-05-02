@@ -14,6 +14,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     embed_backend: str = "sentence_transformers"
@@ -37,6 +47,11 @@ class Settings:
     ollama_answer_num_predict: int = 1024
     ollama_extract_max_chars: int = 1200
     extractor_provider: str = "ollama"
+    fusion_mode: str = "hybrid"
+    fusion_profile_path: str = ""
+    fusion_profile_meta_path: str = ""
+    fusion_min_weight: float = 0.10
+    fusion_max_weight: float = 0.80
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -63,4 +78,9 @@ class Settings:
             ollama_answer_num_predict=_env_int("OLLAMA_ANSWER_NUM_PREDICT", 1024),
             ollama_extract_max_chars=_env_int("OLLAMA_EXTRACT_MAX_CHARS", 1200),
             extractor_provider=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_PROVIDER", "ollama")),
+            fusion_mode=os.environ.get("AEROSPACE_FUSION_MODE", "hybrid"),
+            fusion_profile_path=os.environ.get("AEROSPACE_FUSION_PROFILE_PATH", ""),
+            fusion_profile_meta_path=os.environ.get("AEROSPACE_FUSION_PROFILE_META_PATH", ""),
+            fusion_min_weight=_env_float("AEROSPACE_FUSION_MIN_WEIGHT", 0.10),
+            fusion_max_weight=_env_float("AEROSPACE_FUSION_MAX_WEIGHT", 0.80),
         )

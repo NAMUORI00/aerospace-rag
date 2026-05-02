@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..config import Settings
+from ..retrieval.weights import FUSION_PROFILE_META_FILENAME, FUSION_WEIGHTS_FILENAME
 from ..stores.vector import COLLECTION_NAME
 
 
@@ -55,6 +56,8 @@ def build_artifact_manifest(
     files = {
         "bm25": index_dir / "bm25.json",
         "chunks": index_dir / "chunks.jsonl",
+        "fusion_profile": index_dir / FUSION_WEIGHTS_FILENAME,
+        "fusion_profile_meta": index_dir / FUSION_PROFILE_META_FILENAME,
     }
     artifacts: dict[str, object] = {}
     for label, root in blocks.items():
@@ -79,7 +82,7 @@ def build_artifact_manifest(
             "embedding_model": resolved_settings.embed_model,
             "embedding_dim": resolved_settings.embed_dim,
             "qdrant_collection": COLLECTION_NAME,
-            "fusion_policy": "core_static",
+            "fusion_policy": "runtime_profile_weighted_rrf",
         },
     }
     payload = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
