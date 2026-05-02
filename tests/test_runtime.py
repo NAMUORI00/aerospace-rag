@@ -168,6 +168,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(fusion["weights_source"], "runtime_profile")
         self.assertEqual(fusion["fusion_profile_id"], "runtime-test")
         self.assertEqual(fusion["candidate_depth"], 24)
+        self.assertNotIn("rerank_adjustments", fusion)
 
     def test_lexical_rerank_promotes_matching_structured_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -154,16 +154,17 @@ class LocalIndex:
             limit=max(top_k * 2, top_k),
             return_debug=True,
         )
-        rerank_adjustments: dict[str, float] = {}
-        adjusted_ranked: list[ChannelHit] = []
-        for ranked_hit in ranked:
-            bonus = _lexical_rerank_bonus(query, chunks.get(ranked_hit.chunk_id))
-            if bonus:
-                rerank_adjustments[ranked_hit.chunk_id] = bonus
-            adjusted_ranked.append(ChannelHit(ranked_hit.chunk_id, float(ranked_hit.score) + bonus))
-        if rerank_adjustments:
-            ranked = sorted(adjusted_ranked, key=lambda hit: hit.score, reverse=True)
-            fusion_debug["rerank_adjustments"] = {"lexical_coverage": rerank_adjustments}
+        if weight_diag.get("weights_source") != "runtime_profile":
+            rerank_adjustments: dict[str, float] = {}
+            adjusted_ranked: list[ChannelHit] = []
+            for ranked_hit in ranked:
+                bonus = _lexical_rerank_bonus(query, chunks.get(ranked_hit.chunk_id))
+                if bonus:
+                    rerank_adjustments[ranked_hit.chunk_id] = bonus
+                adjusted_ranked.append(ChannelHit(ranked_hit.chunk_id, float(ranked_hit.score) + bonus))
+            if rerank_adjustments:
+                ranked = sorted(adjusted_ranked, key=lambda hit: hit.score, reverse=True)
+                fusion_debug["rerank_adjustments"] = {"lexical_coverage": rerank_adjustments}
         hits: list[RetrievalHit] = []
         for ranked_hit in ranked:
             chunk = chunks.get(ranked_hit.chunk_id)
