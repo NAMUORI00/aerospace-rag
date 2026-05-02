@@ -15,6 +15,8 @@ from .weights import FUSION_PROFILE_META_FILENAME, FUSION_WEIGHTS_FILENAME
 
 
 DEFAULT_WEIGHT_GRID = [
+    {"vector_dense_text": 0.55, "vector_sparse": 0.45, "vector_image": 0.0, "graph": 0.0},
+    {"vector_dense_text": 0.45, "vector_sparse": 0.55, "vector_image": 0.0, "graph": 0.0},
     {"vector_dense_text": 0.55, "vector_sparse": 0.35, "vector_image": 0.0, "graph": 0.10},
     {"vector_dense_text": 0.45, "vector_sparse": 0.45, "vector_image": 0.0, "graph": 0.10},
     {"vector_dense_text": 0.35, "vector_sparse": 0.55, "vector_image": 0.0, "graph": 0.10},
