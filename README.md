@@ -4,6 +4,25 @@
 
 공개 repo에는 원본 데이터 파일을 포함하지 않습니다.
 
+## Goal
+
+이 repo의 목표는 기업 관계자가 GitHub에서 인증된 계정으로 바로 열 수 있는 Google Colab T4 프로토타입을 제공하는 것입니다. Colab 노트북은 항공우주 업무 문서를 업로드한 뒤 파싱, 청킹, Qdrant/BM25/graph-lite 검색, weighted RRF 결합, Ollama 답변 생성, 근거 확인까지 한 화면에서 재현하도록 구성되어 있습니다.
+
+기대 출력은 다음과 같습니다.
+
+- `data/index/qdrant`, `data/index/graph/graph_index.json`, `data/index/bm25.json`, `data/index/chunks.jsonl` 인덱스 산출물
+- 검색 단독 검증에서 채널별 근거와 diagnostics
+- LLM 답변, 상위 근거, 반복 질문 결과표
+- 실제 업무 파일용 질문 3개 이상의 답변/출처/검색 채널 표시
+
+## Lineage
+
+이 프로젝트는 [NAMUORI00/smartfarm-workspace](https://github.com/NAMUORI00/smartfarm-workspace)의 Dense/Sparse/Graph 3채널 RAG 아이디어를 항공우주 문서와 Colab T4 데모 환경에 맞게 줄인 포팅판입니다.
+
+- 유지한 개념: dense 검색, sparse/BM25 검색, graph 기반 보강, weighted RRF, 근거 중심 답변, 재현 가능한 실행 흐름
+- 대체한 부분: Docker compose, submodule 워크스페이스, FalkorDB 운영 구조를 단일 Python 패키지와 JSON graph-lite 인덱스로 축소
+- 범위 밖: 장기 운영 서버, 컨테이너 배포, 외부 LLM provider 확장, 기업 내부 데이터 영구 저장
+
 ## Setup
 
 ```powershell
@@ -24,6 +43,21 @@ python -m venv .venv
 Open [notebooks/aerospace_rag_colab_ui.ipynb](notebooks/aerospace_rag_colab_ui.ipynb) in Colab and run cells top to bottom. The notebook clones this repo into `/content/aerospace-rag`, installs dependencies, prepares Ollama `gemma4:e4b`, asks you to place supported documents under `/content/aerospace-rag/data`, builds the local index, and runs retrieval/answer checks. Its indexing default is strict Ollama extraction with one-hour timeout limits, JSON Schema structured output, one Ollama repair attempt for malformed JSON, and no local fallback.
 
 By default, put files directly into the Colab file panel under `aerospace-rag/data`.
+
+Colab T4 execution checklist:
+
+1. Runtime type: GPU, T4.
+2. Run every cell from the top.
+3. Upload supported files into `/content/aerospace-rag/data` when the data-prep section asks for them.
+4. Confirm the index section reports file/chunk counts and the four index artifacts above.
+5. Confirm the answer sections show answer text, source files, scores, and diagnostics.
+
+If a run fails:
+
+- Missing package: rerun the dependency cell.
+- Ollama unavailable: rerun the Ollama runtime cell, or use `ANSWER_PROVIDER = "extractive"` only for no-LLM retrieval debugging.
+- No data found: upload files under `/content/aerospace-rag/data`, not Drive or the notebook root.
+- Model pull timeout: keep the T4 runtime active and rerun the Ollama cell before rebuilding the index.
 
 ## Data Files
 
