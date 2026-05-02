@@ -7,6 +7,7 @@ from .stores.local_index import COLLECTION_NAME, LocalIndex
 from .ingestion import ingest_data
 from .models import BuildResult, QueryResponse, SourceRef
 from .generation.providers import generate_answer, route_generation_provider
+from .retrieval.profile import write_self_calibrated_fusion_profile
 from .text import excerpt
 
 
@@ -28,6 +29,9 @@ def build_index(
     chunks = ingest_data(data_path, strict_expected=strict_expected, include_extra=include_extra)
     index = LocalIndex(index_path, settings=resolved_settings)
     index.build(chunks, reset=reset)
+    profile_summary = None
+    if str(resolved_settings.fusion_mode or "hybrid").strip().lower() not in {"static", "off", "disabled"}:
+        profile_summary = write_self_calibrated_fusion_profile(index_dir=index_path, settings=resolved_settings)
     return BuildResult(
         data_dir=data_path,
         index_dir=index_path,
@@ -37,6 +41,8 @@ def build_index(
         graph_index_path=index.graph.index_path,
         bm25_path=index.bm25_path,
         chunks_path=index.chunks_path,
+        fusion_profile_path=profile_summary["profile_path"] if profile_summary else None,
+        fusion_profile_meta_path=profile_summary["profile_meta_path"] if profile_summary else None,
     )
 
 
