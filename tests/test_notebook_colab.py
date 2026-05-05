@@ -44,6 +44,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("format_sources_markdown", source)
         self.assertIn("build_response_row", source)
         self.assertIn("format_results_table", source)
+        self.assertIn("format_storage_visualization", source)
         self.assertIn("gemma4:e4b", source)
         self.assertIn("ANSWER_PROVIDER", source)
         self.assertIn("TOP_K", source)
@@ -95,6 +96,7 @@ class NotebookColabTests(unittest.TestCase):
                 "## 7. 수집/파싱 단독 확인",
                 "## 8. 인덱스 생성",
                 "## 8A. 도메인 데이터베이스 저장 구조 이해",
+                "## 8B. Qdrant / Graph 저장 구조 시각화",
                 "## 9. 검색 단독 검증",
                 "## 10. LLM 답변 생성",
                 "## 11. 근거 확인",
@@ -138,12 +140,21 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("DATABASE_PREVIEW", code_source)
         self.assertIn("payload 샘플 2개", code_source)
         self.assertIn("display(HTML(KNOWLEDGE_GRAPH_HTML))", code_source)
+        self.assertIn("format_storage_visualization", code_source)
 
-    def test_notebook_is_saved_without_runtime_outputs(self) -> None:
+    def test_notebook_persists_reference_colab_outputs(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
-        for cell in nb.cells:
-            self.assertFalse(cell.get("outputs"), "notebook should not persist runtime outputs")
-            self.assertIsNone(cell.get("execution_count"), "notebook should be saved unexecuted")
+        code_cells = [cell for cell in nb.cells if cell.cell_type == "code"]
+        output_cells = [cell for cell in code_cells if cell.get("outputs")]
+        storage_viz_cells = [
+            cell
+            for cell in code_cells
+            if "format_storage_visualization" in cell.source
+        ]
+
+        self.assertGreaterEqual(len(output_cells), 10)
+        self.assertEqual(len(storage_viz_cells), 1)
+        self.assertTrue(storage_viz_cells[0].get("outputs"))
 
 
 if __name__ == "__main__":

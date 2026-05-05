@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import subprocess as real_subprocess
 import sys
@@ -133,6 +134,36 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertIn("<table", table)
         self.assertIn("무슨 질문인가?", table)
         self.assertIn("alpha.pdf, beta.pdf", table)
+
+    def test_format_storage_visualization_uses_index_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index_dir = Path(tmp) / "index"
+            graph_dir = index_dir / "graph"
+            graph_dir.mkdir(parents=True)
+            (index_dir / "chunks.jsonl").write_text("{}", encoding="utf-8")
+            (index_dir / "bm25.json").write_text("{}", encoding="utf-8")
+            (graph_dir / "graph_index.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "aerospace_graph_v2",
+                        "entity_to_chunks": {"nasa": ["doc#1"]},
+                        "chunk_entities": {"doc#1": ["nasa"]},
+                        "entity_text": {"nasa": "NASA"},
+                        "entity_types": {"nasa": "Organization"},
+                        "relations": [],
+                        "chunks": {"doc#1": {"source_file": "doc.pdf", "modality": "text"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            sections = notebook_runtime.format_storage_visualization(index_dir)
+
+        content = "\n".join(section["content"] for section in sections)
+        self.assertIn("Qdrant / Graph storage visualization", content)
+        self.assertIn("graph/graph_index.json", content)
+        self.assertIn("aerospace_graph_v2", content)
+        self.assertIn("NASA", content)
 
     def test_build_response_row_prefers_clean_intro_and_first_bullet_for_table_summary(self) -> None:
         response = QueryResponse(

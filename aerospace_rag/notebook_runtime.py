@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from .ingestion import SUPPORTED_SUFFIXES, iter_supported_files
 from .models import QueryResponse, RetrievalHit, SourceRef
@@ -419,3 +419,316 @@ def format_results_table(rows: Sequence[Mapping[str, object]], *, columns: Seque
         "</table>"
         "</div>"
     )
+
+
+def _storage_short(value: object, *, max_chars: int = 90) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "..."
+
+
+def _storage_size(num: int | float) -> str:
+    value = float(num or 0)
+    for unit in ["B", "KB", "MB", "GB"]:
+        if value < 1024 or unit == "GB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def _storage_artifact_stats(path: Path) -> tuple[bool, int, int]:
+    if not path.exists():
+        return False, 0, 0
+    if path.is_file():
+        return True, 1, path.stat().st_size
+    files = [child for child in path.rglob("*") if child.is_file()]
+    return True, len(files), sum(child.stat().st_size for child in files)
+
+
+def _storage_html_table(rows: Sequence[Mapping[str, object]], columns: Sequence[str]) -> str:
+    header = "".join(f"<th>{html.escape(column)}</th>" for column in columns)
+    body = []
+    for row in rows:
+        body.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(str(row.get(column, '')))}</td>" for column in columns)
+            + "</tr>"
+        )
+    return (
+        "<style>"
+        ".ragviz table{border-collapse:collapse;width:100%;font-size:13px;line-height:1.45;margin:8px 0 18px;}"
+        ".ragviz th{background:#f6f8fa;border-bottom:1px solid #d0d7de;padding:8px;text-align:left;}"
+        ".ragviz td{border-bottom:1px solid #eaecf0;padding:8px;vertical-align:top;}"
+        ".ragviz code{background:#f6f8fa;padding:1px 4px;border-radius:4px;}"
+        "</style><div class='ragviz'><table><thead><tr>"
+        + header
+        + "</tr></thead><tbody>"
+        + "".join(body)
+        + "</tbody></table></div>"
+    )
+
+
+def _storage_qdrant_sections(qdrant_dir: Path, collection_name: str) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    qdrant_rows: list[dict[str, object]] = []
+    point_rows: list[dict[str, object]] = []
+    if not qdrant_dir.exists():
+        qdrant_rows.append(
+            {
+                "collection": collection_name,
+                "collections_on_disk": "",
+                "points_count": "",
+                "vectors_count": "",
+                "vector_config": "",
+                "sparse_config": f"Qdrant directory not found: {qdrant_dir}",
+            }
+        )
+        return qdrant_rows, point_rows
+
+    try:
+        from qdrant_client import QdrantClient
+
+        client = QdrantClient(path=str(qdrant_dir))
+        try:
+            collections = [collection.name for collection in client.get_collections().collections]
+            info = client.get_collection(collection_name)
+            params = getattr(info.config, "params", None)
+            qdrant_rows.append(
+                {
+                    "collection": collection_name,
+                    "collections_on_disk": ", ".join(collections),
+                    "points_count": getattr(info, "points_count", ""),
+                    "vectors_count": getattr(info, "vectors_count", ""),
+                    "vector_config": _storage_short(getattr(params, "vectors", None), max_chars=220),
+                    "sparse_config": _storage_short(getattr(params, "sparse_vectors", None), max_chars=220),
+                }
+            )
+            points, _ = client.scroll(collection_name=collection_name, limit=8, with_payload=True, with_vectors=False)
+            for point in points:
+                payload = point.payload or {}
+                location = "/".join(str(payload.get(key) or "") for key in ["page", "sheet", "row"]).strip("/")
+                point_rows.append(
+                    {
+                        "point_id": str(point.id),
+                        "chunk_id": _storage_short(payload.get("chunk_id"), max_chars=70),
+                        "source_file": payload.get("source_file") or payload.get("source_doc") or "",
+                        "modality": payload.get("modality", ""),
+                        "page/sheet/row": location,
+                        "payload_keys": ", ".join(sorted(payload.keys())[:14]),
+                        "text_preview": _storage_short(payload.get("text"), max_chars=140),
+                    }
+                )
+        finally:
+            client.close()
+    except Exception as exc:
+        qdrant_rows.append(
+            {
+                "collection": collection_name,
+                "collections_on_disk": "",
+                "points_count": "",
+                "vectors_count": "",
+                "vector_config": "",
+                "sparse_config": f"Qdrant inspect failed: {type(exc).__name__}: {exc}",
+            }
+        )
+    return qdrant_rows, point_rows
+
+
+def _storage_graph_payload(graph_path: Path) -> dict[str, Any]:
+    if not graph_path.exists():
+        return {}
+    return json.loads(graph_path.read_text(encoding="utf-8"))
+
+
+def _storage_graph_rows(graph: Mapping[str, Any]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    entity_to_chunks = {key: list(value) for key, value in dict(graph.get("entity_to_chunks") or {}).items()}
+    entity_text = dict(graph.get("entity_text") or {})
+    entity_types = dict(graph.get("entity_types") or {})
+    relations = list(graph.get("relations") or [])
+    chunks = dict(graph.get("chunks") or {})
+    summary_rows = [
+        {
+            "schema_version": graph.get("schema_version", ""),
+            "entities": len(entity_to_chunks),
+            "relations": len(relations),
+            "chunks": len(chunks),
+            "entity_to_chunk_edges": sum(len(value) for value in entity_to_chunks.values()),
+        }
+    ]
+    top_entity_ids = sorted(entity_to_chunks, key=lambda entity: (-len(entity_to_chunks[entity]), entity_text.get(entity, entity)))[:14]
+    entity_rows = []
+    for entity_id in top_entity_ids:
+        entity_rows.append(
+            {
+                "entity_id": entity_id,
+                "label": entity_text.get(entity_id, entity_id),
+                "type": entity_types.get(entity_id, ""),
+                "chunk_count": len(entity_to_chunks.get(entity_id, [])),
+                "sample_chunks": ", ".join(
+                    _storage_short(chunks.get(chunk_id, {}).get("source_file", chunk_id), max_chars=45)
+                    for chunk_id in entity_to_chunks.get(entity_id, [])[:3]
+                ),
+            }
+        )
+    return summary_rows, entity_rows
+
+
+def _storage_relationship_svg(graph: Mapping[str, Any]) -> str:
+    entity_to_chunks = {key: list(value) for key, value in dict(graph.get("entity_to_chunks") or {}).items()}
+    chunk_entities = {key: list(value) for key, value in dict(graph.get("chunk_entities") or {}).items()}
+    entity_text = dict(graph.get("entity_text") or {})
+    entity_types = dict(graph.get("entity_types") or {})
+    relations = list(graph.get("relations") or [])
+    chunks = dict(graph.get("chunks") or {})
+    top_entity_ids = sorted(entity_to_chunks, key=lambda entity: (-len(entity_to_chunks[entity]), entity_text.get(entity, entity)))[:14]
+    top_chunk_ids = sorted(
+        chunk_entities,
+        key=lambda chunk: (-len(chunk_entities[chunk]), chunks.get(chunk, {}).get("source_file", "")),
+    )[:10]
+    selected_entities = set(top_entity_ids)
+    selected_chunks = set(top_chunk_ids)
+    for entity_id in top_entity_ids:
+        selected_chunks.update(entity_to_chunks.get(entity_id, [])[:2])
+
+    width, height = 1160, 720
+    artifact_nodes = [
+        ("qdrant", 100, 110, "Qdrant\nvector+payload"),
+        ("chunks", 100, 230, "chunks.jsonl\ncanonical payload"),
+        ("bm25", 100, 350, "bm25.json\nkeyword docs"),
+        ("graph", 100, 470, "graph_index.json\nentities+relations"),
+    ]
+    chunk_list = list(selected_chunks)[:12]
+    entity_list = list(selected_entities)[:14]
+    chunk_pos = {}
+    entity_pos = {}
+    for idx, chunk_id in enumerate(chunk_list):
+        chunk_pos[chunk_id] = (470, 70 + idx * (600 / max(1, len(chunk_list) - 1)))
+    for idx, entity_id in enumerate(entity_list):
+        entity_pos[entity_id] = (890, 60 + idx * (620 / max(1, len(entity_list) - 1)))
+
+    svg = [
+        f"<svg viewBox='0 0 {width} {height}' width='100%' height='720' "
+        "style='background:#fbfbfd;border:1px solid #d0d7de;border-radius:8px;'>",
+        "<defs><marker id='arrow' markerWidth='8' markerHeight='8' refX='7' refY='3' orient='auto'>"
+        "<path d='M0,0 L0,6 L8,3 z' fill='#778'/></marker></defs>",
+    ]
+    for name, x, y, _label in artifact_nodes:
+        target_x = 360 if name != "graph" else 760
+        target_y = 340 if name != "graph" else 360
+        svg.append(
+            f"<line x1='{x + 95}' y1='{y}' x2='{target_x}' y2='{target_y}' "
+            "stroke='#c8ccd4' stroke-width='2' marker-end='url(#arrow)'/>"
+        )
+    for entity_id in entity_list:
+        ex, ey = entity_pos[entity_id]
+        for chunk_id in entity_to_chunks.get(entity_id, []):
+            if chunk_id in chunk_pos:
+                cx, cy = chunk_pos[chunk_id]
+                svg.append(
+                    f"<line x1='{cx + 110}' y1='{cy}' x2='{ex - 105}' y2='{ey}' "
+                    "stroke='#9ab' stroke-width='1.4' opacity='0.55'/>"
+                )
+    for relation in relations[:300]:
+        source = str(relation.get("source") or "")
+        target = str(relation.get("target") or "")
+        if source in entity_pos and target in entity_pos and source != target:
+            x1, y1 = entity_pos[source]
+            x2, y2 = entity_pos[target]
+            svg.append(
+                f"<path d='M{x1 + 80},{y1} C{x1 + 160},{y1} {x2 + 160},{y2} {x2 + 80},{y2}' "
+                "stroke='#e09f3e' stroke-width='1.2' fill='none' opacity='0.45'/>"
+            )
+    for _name, x, y, label in artifact_nodes:
+        title, subtitle = label.split("\n")
+        svg.append(f"<rect x='{x - 80}' y='{y - 34}' width='185' height='68' rx='8' fill='#eef6ff' stroke='#6ea8fe'/>")
+        svg.append(f"<text x='{x + 12}' y='{y - 8}' text-anchor='middle' font-size='13' font-weight='700' fill='#17324d'>{html.escape(title)}</text>")
+        svg.append(f"<text x='{x + 12}' y='{y + 14}' text-anchor='middle' font-size='11' fill='#4f6173'>{html.escape(subtitle)}</text>")
+    for chunk_id, (x, y) in chunk_pos.items():
+        payload = dict(chunks.get(chunk_id, {}))
+        label = payload.get("source_file") or chunk_id
+        modality = payload.get("modality") or "chunk"
+        svg.append(f"<rect x='{x - 115}' y='{y - 24}' width='230' height='48' rx='7' fill='#eefaf0' stroke='#6abf69'/>")
+        svg.append(f"<text x='{x}' y='{y - 5}' text-anchor='middle' font-size='11' font-weight='700' fill='#153b1c'>{html.escape(_storage_short(label, max_chars=32))}</text>")
+        svg.append(f"<text x='{x}' y='{y + 13}' text-anchor='middle' font-size='10' fill='#47704a'>{html.escape(modality)} | {html.escape(_storage_short(chunk_id, max_chars=30))}</text>")
+    for entity_id, (x, y) in entity_pos.items():
+        label = entity_text.get(entity_id, entity_id)
+        entity_type = entity_types.get(entity_id, "entity")
+        count = len(entity_to_chunks.get(entity_id, []))
+        svg.append(f"<rect x='{x - 105}' y='{y - 24}' width='210' height='48' rx='24' fill='#fff4e6' stroke='#f0ad4e'/>")
+        svg.append(f"<text x='{x}' y='{y - 5}' text-anchor='middle' font-size='11' font-weight='700' fill='#573b0a'>{html.escape(_storage_short(label, max_chars=28))}</text>")
+        svg.append(f"<text x='{x}' y='{y + 13}' text-anchor='middle' font-size='10' fill='#84621f'>{html.escape(entity_type)} | chunks={count}</text>")
+    svg.append("<text x='100' y='35' text-anchor='middle' font-size='14' font-weight='700' fill='#334'>Artifacts</text>")
+    svg.append("<text x='470' y='35' text-anchor='middle' font-size='14' font-weight='700' fill='#334'>Chunks / Qdrant payload points</text>")
+    svg.append("<text x='890' y='35' text-anchor='middle' font-size='14' font-weight='700' fill='#334'>Graph entities / relations</text>")
+    svg.append("</svg>")
+    return "".join(svg)
+
+
+def format_storage_visualization(
+    index_dir: str | Path,
+    *,
+    build_report: Mapping[str, object] | None = None,
+    collection_name: str = "aerospace_chunks",
+) -> list[dict[str, str]]:
+    resolved_index_dir = Path(index_dir)
+    build_report = build_report or {}
+    resolved_collection = str(build_report.get("qdrant_collection") or collection_name)
+    qdrant_dir = resolved_index_dir / "qdrant"
+    graph_path = resolved_index_dir / "graph" / "graph_index.json"
+    chunks_path = resolved_index_dir / "chunks.jsonl"
+    bm25_path = resolved_index_dir / "bm25.json"
+    artifacts = [
+        ("qdrant", qdrant_dir, "dense/sparse vectors + chunk payload point storage"),
+        ("chunks.jsonl", chunks_path, "canonical chunk payload store"),
+        ("bm25.json", bm25_path, "tokenized sparse keyword index"),
+        ("graph/graph_index.json", graph_path, "entity, relation, entity_to_chunks graph store"),
+    ]
+    artifact_rows = []
+    for name, path, role in artifacts:
+        exists, file_count, byte_count = _storage_artifact_stats(path)
+        artifact_rows.append(
+            {
+                "artifact": name,
+                "exists": exists,
+                "files": file_count,
+                "size": _storage_size(byte_count),
+                "path": str(path),
+                "role": role,
+            }
+        )
+
+    qdrant_rows, point_rows = _storage_qdrant_sections(qdrant_dir, resolved_collection)
+    graph = _storage_graph_payload(graph_path)
+    graph_summary_rows, entity_rows = _storage_graph_rows(graph)
+    return [
+        {"type": "markdown", "content": "### Qdrant / Graph storage visualization"},
+        {"type": "html", "content": _storage_html_table(artifact_rows, ["artifact", "exists", "files", "size", "path", "role"])},
+        {"type": "markdown", "content": "#### Qdrant collection metadata / vector settings"},
+        {
+            "type": "html",
+            "content": _storage_html_table(
+                qdrant_rows,
+                ["collection", "collections_on_disk", "points_count", "vectors_count", "vector_config", "sparse_config"],
+            ),
+        },
+        {"type": "markdown", "content": "#### Qdrant point payload sample"},
+        {
+            "type": "html",
+            "content": _storage_html_table(
+                point_rows,
+                ["point_id", "chunk_id", "source_file", "modality", "page/sheet/row", "payload_keys", "text_preview"],
+            ),
+        },
+        {"type": "markdown", "content": "#### Graph index summary"},
+        {
+            "type": "html",
+            "content": _storage_html_table(
+                graph_summary_rows,
+                ["schema_version", "entities", "relations", "chunks", "entity_to_chunk_edges"],
+            ),
+        },
+        {"type": "markdown", "content": "#### Top graph entities"},
+        {"type": "html", "content": _storage_html_table(entity_rows, ["entity_id", "label", "type", "chunk_count", "sample_chunks"])},
+        {"type": "markdown", "content": "#### Storage relationship map"},
+        {"type": "html", "content": _storage_relationship_svg(graph)},
+    ]
