@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from aerospace_rag.config import Settings
+from aerospace_rag.generation.cross_check import run_gpt_pro_cross_check
 from aerospace_rag.generation.providers import generate_answer
 from aerospace_rag.models import Chunk, RetrievalHit
 
@@ -115,6 +116,79 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("표 데이터:", user_prompt)
         self.assertIn("| EO/K3 | $2,048 | $4,096 |", user_prompt)
         self.assertIn("열 순서를 유지", user_prompt)
+
+    def test_gpt_pro_cross_check_posts_responses_request_and_parses_json(self) -> None:
+        chunk = Chunk(
+            chunk_id="source#1",
+            text="NASA awarded Momentus a solar sail demonstration study contract.",
+            source_file="source.md",
+            modality="text",
+        )
+        hit = RetrievalHit(chunk=chunk, score=1.0, channels={"qdrant": 1.0})
+        observed: dict[str, object] = {}
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                content = json.dumps(
+                    {
+                        "verdict": "supported",
+                        "confidence": 0.94,
+                        "issues": [],
+                        "missing_evidence": [],
+                        "source_alignment": [{"source_file": "source.md", "supports_answer": True, "note": "Directly supported."}],
+                        "suggested_fix": "",
+                    }
+                )
+                return json.dumps({"output_text": content}).encode("utf-8")
+
+        def fake_urlopen(request: object, timeout: int) -> FakeResponse:
+            observed["timeout"] = timeout
+            observed["url"] = request.full_url  # type: ignore[attr-defined]
+            observed["headers"] = dict(getattr(request, "headers", {}))
+            observed["payload"] = json.loads(request.data.decode("utf-8"))  # type: ignore[attr-defined]
+            return FakeResponse()
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = run_gpt_pro_cross_check(
+                "What did NASA award?",
+                "NASA awarded Momentus a solar sail demonstration study contract.",
+                [hit],
+                settings=Settings(
+                    openai_api_key="test-token",
+                    gpt_pro_cross_check_enabled=True,
+                    gpt_pro_cross_check_model="gpt-5.5-pro",
+                    gpt_pro_cross_check_reasoning_effort="xhigh",
+                    gpt_pro_cross_check_timeout_seconds=900,
+                ),
+            )
+
+        payload = observed["payload"]
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["verdict"], "supported")
+        self.assertEqual(result["model"], "gpt-5.5-pro")
+        self.assertEqual(observed["url"], "https://api.openai.com/v1/responses")
+        self.assertEqual(observed["timeout"], 900)
+        self.assertEqual(observed["headers"]["Authorization"], "Bearer test-token")
+        self.assertEqual(payload["model"], "gpt-5.5-pro")
+        self.assertEqual(payload["reasoning"]["effort"], "xhigh")
+        self.assertEqual(payload["text"]["format"]["type"], "json_schema")
+
+    def test_gpt_pro_cross_check_skips_without_api_key(self) -> None:
+        result = run_gpt_pro_cross_check(
+            "question",
+            "answer",
+            [],
+            settings=Settings(gpt_pro_cross_check_enabled=True),
+        )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertIn("OPENAI_API_KEY", result["reason"])
 
 
 if __name__ == "__main__":

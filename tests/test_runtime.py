@@ -118,7 +118,12 @@ class RuntimeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            settings = Settings(embed_backend="hash", vector_backend="json", extractor_provider="local_fallback")
+            settings = Settings(
+                embed_backend="hash",
+                vector_backend="json",
+                extractor_provider="local_fallback",
+                gpt_pro_cross_check_enabled=True,
+            )
             result = build_index(data_dir=data, index_dir=index, strict_expected=False, settings=settings)
             self.assertIsNotNone(result.fusion_profile_path)
             self.assertIsNotNone(result.fusion_profile_meta_path)
@@ -139,6 +144,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("qdrant", response.diagnostics["channels"])
         self.assertEqual(response.diagnostics["fusion"]["weights_source"], "runtime_profile")
         self.assertNotIn("rerank_adjustments", response.diagnostics["fusion"])
+        self.assertEqual(response.diagnostics["cross_check"]["status"], "skipped")
+        self.assertEqual(response.routing["cross_check"]["model"], "gpt-5.5-pro")
         self.assertGreaterEqual(len(response.sources), 1)
 
     def test_local_index_loads_runtime_profile_from_index_dir(self) -> None:

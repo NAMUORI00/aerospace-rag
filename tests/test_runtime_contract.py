@@ -34,6 +34,12 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_extract_num_predict, 4096)
         self.assertEqual(settings.ollama_extract_max_chars, 1200)
         self.assertEqual(settings.extractor_provider, "ollama")
+        self.assertEqual(settings.openai_api_key, "")
+        self.assertEqual(settings.openai_base_url, "https://api.openai.com/v1")
+        self.assertFalse(settings.gpt_pro_cross_check_enabled)
+        self.assertEqual(settings.gpt_pro_cross_check_model, "gpt-5.5-pro")
+        self.assertEqual(settings.gpt_pro_cross_check_reasoning_effort, "high")
+        self.assertEqual(settings.gpt_pro_cross_check_timeout_seconds, 600)
         self.assertFalse(hasattr(settings, "extractor_fallback_on_error"))
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
@@ -42,6 +48,28 @@ class RuntimeContractTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"OLLAMA_API_KEY": "test-token"}, clear=True):
             self.assertEqual(Settings.from_env().ollama_api_key, "test-token")
+
+    def test_settings_read_gpt_pro_cross_check_controls_from_environment(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "openai-token",
+                "OPENAI_BASE_URL": "https://example.test/v1",
+                "GPT_PRO_CROSS_CHECK_ENABLED": "true",
+                "GPT_PRO_CROSS_CHECK_MODEL": "gpt-5.5-pro",
+                "GPT_PRO_CROSS_CHECK_REASONING_EFFORT": "xhigh",
+                "GPT_PRO_CROSS_CHECK_TIMEOUT_SECONDS": "900",
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.openai_api_key, "openai-token")
+        self.assertEqual(settings.openai_base_url, "https://example.test/v1")
+        self.assertTrue(settings.gpt_pro_cross_check_enabled)
+        self.assertEqual(settings.gpt_pro_cross_check_model, "gpt-5.5-pro")
+        self.assertEqual(settings.gpt_pro_cross_check_reasoning_effort, "xhigh")
+        self.assertEqual(settings.gpt_pro_cross_check_timeout_seconds, 900)
 
     def test_settings_read_ollama_timeout_controls_from_environment(self) -> None:
         with patch.dict(

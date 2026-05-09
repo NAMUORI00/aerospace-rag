@@ -16,6 +16,12 @@ def main() -> int:
         choices=["extractive", "ollama"],
         default=None,
     )
+    parser.add_argument(
+        "--gpt-pro-cross-check",
+        action="store_true",
+        default=None,
+        help="Audit the generated answer against retrieved sources with the configured OpenAI GPT Pro model.",
+    )
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
@@ -25,6 +31,7 @@ def main() -> int:
         top_k=args.top_k,
         provider=args.provider,
         debug=args.debug,
+        cross_check=args.gpt_pro_cross_check,
     )
     safe_print(response.answer)
     safe_print("\nSources:")
@@ -33,6 +40,8 @@ def main() -> int:
         safe_print(f"{idx}. {source.source_file} ({loc}) score={source.score:.3f}")
     if args.debug:
         safe_print(f"\nDiagnostics: {response.diagnostics}")
+    elif args.gpt_pro_cross_check:
+        safe_print(f"\nCross-check: {response.diagnostics.get('cross_check')}")
     return 0
 
 

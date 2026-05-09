@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from .config import Settings
 from .stores.local_index import COLLECTION_NAME, LocalIndex
 from .ingestion import ingest_data
 from .models import BuildResult, QueryResponse, SourceRef
+from .generation.cross_check import run_gpt_pro_cross_check
 from .generation.providers import generate_answer, route_generation_provider
 from .retrieval.profile import write_self_calibrated_fusion_profile
 from .text import excerpt
@@ -53,15 +55,24 @@ def ask(
     top_k: int = 8,
     provider: str | None = None,
     debug: bool = False,
+    cross_check: bool | None = None,
     settings: Settings | None = None,
 ) -> QueryResponse:
     resolved_settings = settings or Settings.from_env()
+    if cross_check is not None:
+        resolved_settings = replace(resolved_settings, gpt_pro_cross_check_enabled=cross_check)
     if provider is None:
         provider = "ollama"
     index = LocalIndex(index_dir, settings=resolved_settings)
     hits = index.search(question, top_k=top_k)
     provider = route_generation_provider(provider, settings=resolved_settings)
     answer = generate_answer(question, hits, provider=provider, settings=resolved_settings)
+    cross_check_result = run_gpt_pro_cross_check(
+        question,
+        answer,
+        hits,
+        settings=resolved_settings,
+    )
     sources = [
         SourceRef(
             chunk_id=hit.chunk.chunk_id,
@@ -84,12 +95,20 @@ def ask(
             "provider": provider,
             **index.last_diagnostics,
         }
+    if cross_check_result["status"] != "disabled":
+        diagnostics["cross_check"] = cross_check_result
     return QueryResponse(
         answer=answer,
         sources=sources,
         routing={
             "provider": provider,
             "retrieval": "qdrant+bm25+graph-lite",
+            "cross_check": {
+                "enabled": cross_check_result["status"] != "disabled",
+                "status": cross_check_result["status"],
+                "provider": cross_check_result["provider"],
+                "model": cross_check_result["model"],
+            },
         },
         diagnostics=diagnostics,
     )

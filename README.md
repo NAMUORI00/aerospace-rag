@@ -114,6 +114,20 @@ Ollama 호출이 실패해도 자동으로 extractive 답변으로 우회하지 
 
 프롬프트는 상위 근거만 사용하도록 구성됩니다. table chunk가 포함되면 같은 행의 값을 비교하고 열 순서를 유지하도록 추가 지시를 넣습니다.
 
+## GPT Pro Cross-Check
+
+선택적으로 OpenAI GPT Pro 모델을 답변 검증 단계에 사용할 수 있습니다. 기본값은 꺼짐이며, 켜면 `ask()`가 Ollama 또는 extractive 답변을 만든 뒤 검색 근거와 답변을 `gpt-5.5-pro`에 보내 `diagnostics.cross_check`에 판정, confidence, unsupported claim, 보완 제안을 남깁니다.
+
+필요한 환경 변수는 다음과 같습니다.
+
+- `GPT_PRO_CROSS_CHECK_ENABLED=1`
+- `OPENAI_API_KEY=<OpenAI API key>`
+- `GPT_PRO_CROSS_CHECK_MODEL=gpt-5.5-pro` (기본값)
+- `GPT_PRO_CROSS_CHECK_REASONING_EFFORT=high` (기본값)
+- `GPT_PRO_CROSS_CHECK_TIMEOUT_SECONDS=600` (기본값)
+
+CLI에서는 `--gpt-pro-cross-check` 옵션으로 같은 검증을 켤 수 있습니다. OpenAI API key가 없으면 cross-check는 `skipped` 상태로 기록되고 기존 RAG 답변 생성은 계속됩니다.
+
 ## Colab Notebook
 
 `notebooks/aerospace_rag_colab_ui.ipynb`는 패키지 코드를 감싸는 실행 오케스트레이터입니다. 노트북 자체가 별도의 RAG 구현을 갖는 것이 아니라, repository clone, dependency 준비, 데이터 업로드 위치 확인, index build, retrieval check, answer check, 반복 질문 표시를 순서대로 연결합니다.

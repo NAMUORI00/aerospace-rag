@@ -24,6 +24,13 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     embed_backend: str = "sentence_transformers"
@@ -52,6 +59,12 @@ class Settings:
     fusion_profile_meta_path: str = ""
     fusion_min_weight: float = 0.10
     fusion_max_weight: float = 0.80
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    gpt_pro_cross_check_enabled: bool = False
+    gpt_pro_cross_check_model: str = "gpt-5.5-pro"
+    gpt_pro_cross_check_reasoning_effort: str = "high"
+    gpt_pro_cross_check_timeout_seconds: int = 600
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,4 +96,10 @@ class Settings:
             fusion_profile_meta_path=os.environ.get("AEROSPACE_FUSION_PROFILE_META_PATH", ""),
             fusion_min_weight=_env_float("AEROSPACE_FUSION_MIN_WEIGHT", 0.10),
             fusion_max_weight=_env_float("AEROSPACE_FUSION_MAX_WEIGHT", 0.80),
+            openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
+            openai_base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            gpt_pro_cross_check_enabled=_env_bool("GPT_PRO_CROSS_CHECK_ENABLED", False),
+            gpt_pro_cross_check_model=os.environ.get("GPT_PRO_CROSS_CHECK_MODEL", "gpt-5.5-pro"),
+            gpt_pro_cross_check_reasoning_effort=os.environ.get("GPT_PRO_CROSS_CHECK_REASONING_EFFORT", "high"),
+            gpt_pro_cross_check_timeout_seconds=_env_int("GPT_PRO_CROSS_CHECK_TIMEOUT_SECONDS", 600),
         )
