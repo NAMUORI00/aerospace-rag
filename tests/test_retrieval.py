@@ -13,7 +13,7 @@ from aerospace_rag.generation.providers import route_generation_provider
 from aerospace_rag.models import Chunk
 from aerospace_rag.retrieval.embeddings import EmbeddingService
 from aerospace_rag.retrieval import extraction as extraction_module
-from aerospace_rag.retrieval.extraction import KnowledgeExtractor
+from aerospace_rag.retrieval.extraction import KnowledgeExtractor, parse_llm_json_object
 from aerospace_rag.retrieval.fusion import ChannelHit, weighted_rrf
 from aerospace_rag.retrieval.weights import resolve_channel_weights
 from aerospace_rag.stores.graph import GraphStore
@@ -316,6 +316,50 @@ class RetrievalTests(unittest.TestCase):
                 settings=Settings(extractor_backend="transformers")
             ).extract(chunk)
 
+        self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
+        self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
+
+    def test_parse_llm_json_object_repairs_missing_comma_between_array_objects(self) -> None:
+        parsed = parse_llm_json_object(
+            '{"entities":[{"canonical_id":"NASA","text":"NASA","type":"Agency","confidence":1.0} '
+            '{"canonical_id":"Momentus","text":"Momentus","type":"Company","confidence":1.0}],'
+            '"relations":[]}'
+        )
+
+        self.assertEqual([item["text"] for item in parsed["entities"]], ["NASA", "Momentus"])
+
+    def test_transformers_extractor_repairs_malformed_json_with_same_model(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        malformed = '{"entities":[{"canonical_id":"NASA","text":"NASA","type":"Agency","confidence":}], "relations":[]}'
+        repaired = json.dumps(
+            {
+                "entities": [
+                    {"canonical_id": "NASA", "text": "NASA", "type": "Agency", "confidence": 1.0},
+                    {"canonical_id": "Momentus", "text": "Momentus", "type": "Company", "confidence": 1.0},
+                ],
+                "relations": [
+                    {
+                        "source": "NASA",
+                        "target": "Momentus",
+                        "type": "AWARDED_CONTRACT_TO",
+                        "confidence": 1.0,
+                        "evidence": "solar sail contract",
+                    }
+                ],
+            }
+        )
+
+        with patch.object(extraction_module, "generate_transformers_chat", side_effect=[malformed, repaired]) as generate:
+            result = extraction_module.KnowledgeExtractor(
+                settings=Settings(
+                    extractor_backend="transformers",
+                    knowledge_extract_retries=0,
+                    knowledge_extract_repair_retries=1,
+                )
+            ).extract(chunk)
+
+        self.assertEqual(generate.call_count, 2)
+        self.assertIn("Repair", generate.call_args_list[1].args[0][1]["content"])
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
         self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
 

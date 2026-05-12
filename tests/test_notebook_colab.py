@@ -60,6 +60,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("TRANSFORMERS_ANSWER_NUM_PREDICT = 1024", code_source)
         self.assertIn("TRANSFORMERS_EXTRACT_NUM_PREDICT = 768", code_source)
         self.assertIn("KNOWLEDGE_EXTRACT_RETRIES = 1", code_source)
+        self.assertIn("KNOWLEDGE_EXTRACT_REPAIR_RETRIES = 1", code_source)
         self.assertIn("KNOWLEDGE_EXTRACT_MAX_CHARS = 1200", code_source)
         self.assertIn("GITHUB_REPO_URL", source)
         self.assertIn("DATA_MANIFEST", source)

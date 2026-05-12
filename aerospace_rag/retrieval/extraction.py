@@ -148,11 +148,56 @@ def canonical_id(value: str) -> str:
     return hashlib.sha1(str(value).encode("utf-8")).hexdigest()[:16]
 
 
-def parse_llm_json_object(content: str) -> dict[str, Any]:
+def _strip_json_fences(content: str) -> str:
     text = str(content or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text).strip()
+    return text
+
+
+def _insert_missing_value_commas(text: str) -> str:
+    repaired: list[str] = []
+    pending_space = ""
+    last_significant = ""
+    in_string = False
+    escaped = False
+
+    for char in text:
+        if in_string:
+            repaired.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "\"":
+                in_string = False
+                last_significant = char
+            continue
+
+        if char.isspace():
+            pending_space += char
+            continue
+
+        if last_significant in {"}", "]"} and char in {"{", "[", "\""}:
+            repaired.append(",")
+            pending_space = ""
+        else:
+            repaired.append(pending_space)
+            pending_space = ""
+
+        repaired.append(char)
+        if char == "\"":
+            in_string = True
+            escaped = False
+        else:
+            last_significant = char
+
+    repaired.append(pending_space)
+    return "".join(repaired)
+
+
+def _decode_json_object(text: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -174,6 +219,20 @@ def parse_llm_json_object(content: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("LLM JSON response must be an object")
     return parsed
+
+
+def parse_llm_json_object(content: str) -> dict[str, Any]:
+    text = _strip_json_fences(content)
+    try:
+        return _decode_json_object(text)
+    except json.JSONDecodeError as exc:
+        normalized = _insert_missing_value_commas(text)
+        if normalized == text:
+            raise
+        try:
+            return _decode_json_object(normalized)
+        except json.JSONDecodeError:
+            raise exc
 
 
 def _entity_type(text: str) -> str:
@@ -231,7 +290,8 @@ class KnowledgeExtractor:
         schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
         system_prompt = (
             "You extract compact aerospace retrieval knowledge. Return only one minified JSON object. "
-            "The response must validate against this JSON Schema. Do not include markdown or commentary.\n"
+            "The response must validate against this JSON Schema. Every array item and object field must be "
+            "separated by commas. Do not include markdown or commentary.\n"
             f"JSON Schema: {schema_text}"
         )
         prompt = (
@@ -253,13 +313,44 @@ class KnowledgeExtractor:
                     max_new_tokens=max(128, int(self.settings.transformers_extract_num_predict or 768)),
                     max_time=max(1, int(self.settings.transformers_extract_timeout_seconds or 120)),
                 )
-                return self._result_from_parsed(parse_llm_json_object(content), chunk)
+                try:
+                    parsed = parse_llm_json_object(content)
+                except Exception:
+                    parsed = self._repair_transformers_json(content, system_prompt=system_prompt)
+                return self._result_from_parsed(parsed, chunk)
             except Exception as exc:
                 last_error = exc
         raise RuntimeError(
             "Transformers knowledge extraction failed. Check model loading, generation limits, "
             "or set EXTRACTOR_LLM_BACKEND='local_fallback' for no-LLM debugging."
         ) from last_error
+
+    def _repair_transformers_json(self, content: str, *, system_prompt: str) -> dict[str, Any]:
+        repair_retries = max(0, int(self.settings.knowledge_extract_repair_retries or 0))
+        if repair_retries == 0:
+            return parse_llm_json_object(content)
+        last_error: Exception | None = None
+        repair_prompt = (
+            "Repair this malformed extraction JSON so it validates against the schema. "
+            "Return only one minified JSON object with exactly the top-level keys entities and relations. "
+            "Do not add markdown, commentary, or fields outside the schema.\n\n"
+            f"Malformed JSON:\n{content[:12000]}"
+        )
+        for _ in range(repair_retries):
+            try:
+                repaired = generate_transformers_chat(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": repair_prompt},
+                    ],
+                    settings=self.settings,
+                    max_new_tokens=max(128, int(self.settings.transformers_extract_num_predict or 768)),
+                    max_time=max(1, int(self.settings.transformers_extract_timeout_seconds or 120)),
+                )
+                return parse_llm_json_object(repaired)
+            except Exception as exc:
+                last_error = exc
+        raise RuntimeError("Transformers JSON repair failed.") from last_error
 
     def _result_from_parsed(self, parsed: dict[str, Any], chunk: Chunk) -> ExtractionResult:
         entities = []

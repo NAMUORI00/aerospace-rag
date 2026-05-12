@@ -24,6 +24,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.llm_provider, "transformers")
         self.assertEqual(settings.transformers_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.knowledge_extract_retries, 1)
+        self.assertEqual(settings.knowledge_extract_repair_retries, 1)
         self.assertEqual(settings.knowledge_extract_max_chars, 1200)
         self.assertEqual(settings.extractor_backend, "transformers")
         self.assertFalse(hasattr(settings, "extractor_fallback_on_error"))
@@ -44,6 +45,7 @@ class RuntimeContractTests(unittest.TestCase):
                 "TRANSFORMERS_EXTRACT_NUM_PREDICT": "222",
                 "TRANSFORMERS_LOAD_IN_4BIT": "true",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
+                "KNOWLEDGE_EXTRACT_REPAIR_RETRIES": "3",
                 "KNOWLEDGE_EXTRACT_MAX_CHARS": "2500",
             },
             clear=True,
@@ -59,6 +61,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.transformers_extract_num_predict, 222)
         self.assertTrue(settings.transformers_load_in_4bit)
         self.assertEqual(settings.knowledge_extract_retries, 2)
+        self.assertEqual(settings.knowledge_extract_repair_retries, 3)
         self.assertEqual(settings.knowledge_extract_max_chars, 2500)
 
     def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:

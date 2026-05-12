@@ -43,6 +43,7 @@ class Settings:
     qdrant_url: str = ""
     llm_provider: str = "transformers"
     knowledge_extract_retries: int = 1
+    knowledge_extract_repair_retries: int = 1
     knowledge_extract_max_chars: int = 1200
     transformers_model: str = "google/gemma-4-E4B-it"
     transformers_device_map: str = "auto"
@@ -73,6 +74,7 @@ class Settings:
             qdrant_url=os.environ.get("QDRANT_URL", ""),
             llm_provider=os.environ.get("LLM_PROVIDER", "transformers").strip().lower() or "transformers",
             knowledge_extract_retries=_env_int("KNOWLEDGE_EXTRACT_RETRIES", 1),
+            knowledge_extract_repair_retries=_env_int("KNOWLEDGE_EXTRACT_REPAIR_RETRIES", 1),
             knowledge_extract_max_chars=_env_int("KNOWLEDGE_EXTRACT_MAX_CHARS", 1200),
             transformers_model=os.environ.get("TRANSFORMERS_MODEL", os.environ.get("HF_MODEL", "google/gemma-4-E4B-it")),
             transformers_device_map=os.environ.get("TRANSFORMERS_DEVICE_MAP", "auto"),
