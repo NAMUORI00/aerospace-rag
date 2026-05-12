@@ -38,7 +38,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
         with patch.dict(os.environ, {"LLM_PROVIDER": "extractive"}, clear=True):
-            self.assertEqual(Settings.from_env().llm_provider, "ollama")
+            self.assertEqual(Settings.from_env().llm_provider, "extractive")
 
         with patch.dict(os.environ, {"OLLAMA_API_KEY": "test-token"}, clear=True):
             self.assertEqual(Settings.from_env().ollama_api_key, "test-token")
@@ -68,6 +68,32 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.ollama_extract_num_predict, 768)
         self.assertEqual(settings.ollama_answer_num_predict, 1200)
         self.assertEqual(settings.ollama_extract_max_chars, 2500)
+
+    def test_settings_read_transformers_provider_controls_from_environment(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "transformers",
+                "EXTRACTOR_LLM_BACKEND": "transformers",
+                "TRANSFORMERS_MODEL": "google/gemma-4-E4B-it",
+                "TRANSFORMERS_GENERATE_TIMEOUT_SECONDS": "45",
+                "TRANSFORMERS_EXTRACT_TIMEOUT_SECONDS": "33",
+                "TRANSFORMERS_ANSWER_NUM_PREDICT": "321",
+                "TRANSFORMERS_EXTRACT_NUM_PREDICT": "222",
+                "TRANSFORMERS_LOAD_IN_4BIT": "true",
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.llm_provider, "transformers")
+        self.assertEqual(settings.extractor_provider, "transformers")
+        self.assertEqual(settings.transformers_model, "google/gemma-4-E4B-it")
+        self.assertEqual(settings.transformers_generate_timeout_seconds, 45)
+        self.assertEqual(settings.transformers_extract_timeout_seconds, 33)
+        self.assertEqual(settings.transformers_answer_num_predict, 321)
+        self.assertEqual(settings.transformers_extract_num_predict, 222)
+        self.assertTrue(settings.transformers_load_in_4bit)
 
     def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:
         with patch.dict(sys.modules, {"sentence_transformers": None}):

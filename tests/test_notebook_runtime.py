@@ -218,6 +218,29 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertIn((["apt-get", "install", "-y", "zstd"], False), fake_subprocess.calls)
         self.assertNotIn("LLM_PROVIDER", os.environ)
 
+    def test_transformers_runtime_preloads_configured_model(self) -> None:
+        observed: dict[str, object] = {}
+
+        def fake_ensure(settings: object) -> dict[str, object]:
+            observed["settings"] = settings
+            return {"ready": True, "model": "google/gemma-4-E4B-it", "device_map": "auto"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "transformers",
+                "TRANSFORMERS_MODEL": "google/gemma-4-E4B-it",
+                "TRANSFORMERS_LOAD_IN_4BIT": "true",
+            },
+            clear=True,
+        ), patch.object(notebook_runtime, "ensure_transformers_model", side_effect=fake_ensure):
+            status = notebook_runtime.ensure_transformers_runtime(True)
+
+        self.assertTrue(status["ready"])
+        self.assertEqual(status["model"], "google/gemma-4-E4B-it")
+        self.assertEqual(observed["settings"].transformers_model, "google/gemma-4-E4B-it")
+        self.assertTrue(observed["settings"].transformers_load_in_4bit)
+
 
 if __name__ == "__main__":
     unittest.main()

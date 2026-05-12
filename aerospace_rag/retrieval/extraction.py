@@ -9,6 +9,7 @@ from typing import Any
 import urllib.request
 
 from ..config import Settings
+from ..generation.transformers_backend import generate_transformers_chat
 from ..models import Chunk
 from ..text import tokenize, unique_ordered
 
@@ -201,7 +202,7 @@ def extract_entity_texts(chunk: Chunk) -> list[str]:
 
 
 class KnowledgeExtractor:
-    """Knowledge extractor with Ollama by default and explicit local debug mode."""
+    """Knowledge extractor with Ollama/Transformers model paths and explicit local debug mode."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
@@ -210,9 +211,11 @@ class KnowledgeExtractor:
         provider = str(self.settings.extractor_provider or "ollama").strip().lower()
         if provider == "ollama":
             return self._extract_with_ollama(chunk)
+        if provider == "transformers":
+            return self._extract_with_transformers(chunk)
         if provider in {"local", "local_fallback", "debug_local"}:
             return self._extract_local_debug(chunk)
-        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'ollama' or explicit debug mode 'local_fallback'.")
+        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'ollama', 'transformers', or explicit debug mode 'local_fallback'.")
 
     def _extract_with_ollama(self, chunk: Chunk) -> ExtractionResult:
         base_url = str(self.settings.ollama_base_url or "").strip().rstrip("/")
@@ -274,6 +277,45 @@ class KnowledgeExtractor:
                 "Ollama knowledge extraction failed. Start Ollama, pull the configured model, "
                 "or increase OLLAMA_EXTRACT_TIMEOUT_SECONDS."
             ) from last_error
+        return self._result_from_parsed(parsed, chunk)
+
+    def _extract_with_transformers(self, chunk: Chunk) -> ExtractionResult:
+        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 1200))
+        chunk_text = chunk.text[:max_chars]
+        schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
+        system_prompt = (
+            "You extract compact aerospace retrieval knowledge. Return only one minified JSON object. "
+            "The response must validate against this JSON Schema. Do not include markdown or commentary.\n"
+            f"JSON Schema: {schema_text}"
+        )
+        prompt = (
+            "Extract entities and relations from this chunk. "
+            "Use canonical_id values in relation source/target. "
+            "If there is no reliable item, return empty arrays.\n\n"
+            f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk_text}"
+        )
+        attempts = max(0, int(self.settings.ollama_extract_retries or 0)) + 1
+        last_error: Exception | None = None
+        for _ in range(attempts):
+            try:
+                content = generate_transformers_chat(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    settings=self.settings,
+                    max_new_tokens=max(128, int(self.settings.transformers_extract_num_predict or 768)),
+                    max_time=max(1, int(self.settings.transformers_extract_timeout_seconds or 120)),
+                )
+                return self._result_from_parsed(parse_llm_json_object(content), chunk)
+            except Exception as exc:
+                last_error = exc
+        raise RuntimeError(
+            "Transformers knowledge extraction failed. Check model loading, generation limits, "
+            "or set EXTRACTOR_LLM_BACKEND='local_fallback' for no-LLM debugging."
+        ) from last_error
+
+    def _result_from_parsed(self, parsed: dict[str, Any], chunk: Chunk) -> ExtractionResult:
         entities = []
         for item in parsed.get("entities") or []:
             if not isinstance(item, dict):

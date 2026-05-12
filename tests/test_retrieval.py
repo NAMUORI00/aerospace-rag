@@ -12,6 +12,7 @@ from aerospace_rag.config import Settings
 from aerospace_rag.generation.providers import route_generation_provider
 from aerospace_rag.models import Chunk
 from aerospace_rag.retrieval.embeddings import EmbeddingService
+from aerospace_rag.retrieval import extraction as extraction_module
 from aerospace_rag.retrieval.extraction import KnowledgeExtractor
 from aerospace_rag.retrieval.fusion import ChannelHit, weighted_rrf
 from aerospace_rag.retrieval.weights import resolve_channel_weights
@@ -24,12 +25,13 @@ class RetrievalTests(unittest.TestCase):
         EmbeddingService._MODEL_CACHE.clear()
 
     def test_generation_provider_rejects_non_core_provider_aliases(self) -> None:
-        settings = Settings(llm_provider="extractive")
+        settings = Settings(llm_provider="transformers")
 
-        for provider in [None, "ollama"]:
-            self.assertEqual(route_generation_provider(provider, settings=settings), "ollama")
+        self.assertEqual(route_generation_provider(None, settings=settings), "transformers")
+        self.assertEqual(route_generation_provider("ollama", settings=settings), "ollama")
 
         self.assertEqual(route_generation_provider("extractive", settings=settings), "extractive")
+        self.assertEqual(route_generation_provider("transformers", settings=settings), "transformers")
         for provider in ["local", "openai_compatible", "gemma4_openai", "vllm", "remote"]:
             with self.assertRaisesRegex(ValueError, "provider"):
                 route_generation_provider(provider, settings=settings)
@@ -379,6 +381,44 @@ class RetrievalTests(unittest.TestCase):
         self.assertIn("Repair this malformed JSON", observed_payloads[1]["messages"][1]["content"])
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
         self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
+
+    def test_transformers_extractor_uses_configured_model_and_limits(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        observed: dict[str, object] = {}
+
+        def fake_generate(
+            messages: list[dict[str, str]],
+            *,
+            settings: Settings,
+            max_new_tokens: int,
+            max_time: int,
+        ) -> str:
+            observed["messages"] = messages
+            observed["model"] = settings.transformers_model
+            observed["max_new_tokens"] = max_new_tokens
+            observed["max_time"] = max_time
+            return json.dumps(
+                {
+                    "entities": [{"canonical_id": "NASA", "text": "NASA", "type": "Agency"}],
+                    "relations": [],
+                }
+            )
+
+        with patch.object(extraction_module, "generate_transformers_chat", side_effect=fake_generate):
+            result = extraction_module.KnowledgeExtractor(
+                settings=Settings(
+                    extractor_provider="transformers",
+                    transformers_model="google/gemma-4-E4B-it",
+                    transformers_extract_num_predict=222,
+                    transformers_extract_timeout_seconds=33,
+                )
+            ).extract(chunk)
+
+        self.assertEqual([entity.text for entity in result.entities], ["NASA"])
+        self.assertEqual(observed["model"], "google/gemma-4-E4B-it")
+        self.assertEqual(observed["max_new_tokens"], 222)
+        self.assertEqual(observed["max_time"], 33)
+        self.assertIn("JSON Schema", observed["messages"][0]["content"])
 
 
 if __name__ == "__main__":

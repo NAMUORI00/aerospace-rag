@@ -15,6 +15,8 @@ import time
 import urllib.request
 from typing import Any, Iterable, Mapping, Sequence
 
+from .config import Settings
+from .generation.transformers_backend import ensure_transformers_model
 from .ingestion import SUPPORTED_SUFFIXES, iter_supported_files
 from .models import QueryResponse, RetrievalHit, SourceRef
 
@@ -22,6 +24,10 @@ from .models import QueryResponse, RetrievalHit, SourceRef
 REQUIRED_NOTEBOOK_PACKAGES = {
     "qdrant_client": "qdrant-client",
     "sentence_transformers": "sentence-transformers",
+    "transformers": "transformers",
+    "torch": "torch",
+    "accelerate": "accelerate",
+    "bitsandbytes": "bitsandbytes",
     "docling": "docling",
     "openpyxl": "openpyxl",
     "pypdf": "pypdf",
@@ -118,6 +124,19 @@ def mark_ollama_unavailable(reason: str) -> dict[str, object]:
     print('ask() will raise until Ollama is ready; set ANSWER_PROVIDER = "extractive" for no-LLM debugging.')
     print("Reason:", reason)
     return {"ready": False, "reason": reason}
+
+
+def ensure_transformers_runtime(llm_needed: bool) -> dict[str, object]:
+    if not llm_needed:
+        return {"ready": False, "reason": "LLM not requested"}
+    try:
+        status = ensure_transformers_model(Settings.from_env())
+    except Exception as exc:
+        print("Transformers runtime unavailable.")
+        print("Reason:", exc)
+        return {"ready": False, "reason": str(exc)}
+    print("Transformers ready:", status["model"], "device_map:", status["device_map"])
+    return status
 
 
 def ensure_ollama_runtime(llm_needed: bool, *, in_colab: bool, pull_model: bool = True) -> dict[str, object]:

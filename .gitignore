@@ -3,6 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ipynb_checkpoints/
-data/
+data/*
+!data/251222_H3 8호기 발사 경과.pdf
+!data/NASA awards Momentus contract for solar sail demonstration study(영).pdf
+!data/위성영상가격.png
+!data/인공위성_질문응답.xlsx
+!data/해외정부 우주항공 현황.png
+data/index/
 tmp/
 output/

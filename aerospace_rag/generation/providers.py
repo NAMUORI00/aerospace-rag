@@ -6,6 +6,7 @@ import urllib.request
 from ..config import Settings
 from ..models import RetrievalHit
 from ..text import excerpt
+from .transformers_backend import generate_transformers_chat
 
 
 class OllamaGenerationError(RuntimeError):
@@ -17,11 +18,10 @@ def route_generation_provider(
     *,
     settings: Settings | None = None,
 ) -> str:
-    _ = settings
-    requested = str(provider or "ollama").strip().lower()
-    if requested in {"ollama", "extractive"}:
+    requested = str(provider or (settings.llm_provider if settings else "ollama") or "ollama").strip().lower()
+    if requested in {"ollama", "extractive", "transformers"}:
         return requested
-    raise ValueError("provider must be 'ollama' or explicit debug mode 'extractive'.")
+    raise ValueError("provider must be 'ollama', 'transformers', or explicit debug mode 'extractive'.")
 
 
 def _build_prompt(question: str, hits: list[RetrievalHit]) -> str:
@@ -104,6 +104,19 @@ def _ollama_answer(question: str, hits: list[RetrievalHit], settings: Settings) 
     return answer
 
 
+def _transformers_answer(question: str, hits: list[RetrievalHit], settings: Settings) -> str:
+    messages = [
+        {"role": "system", "content": "다음 근거만 사용해 한국어로 간결하게 답하세요. 근거가 부족하면 부족하다고 말하세요."},
+        {"role": "user", "content": _build_prompt(question, hits)},
+    ]
+    return generate_transformers_chat(
+        messages,
+        settings=settings,
+        max_new_tokens=max(128, int(settings.transformers_answer_num_predict or 1024)),
+        max_time=max(1, int(settings.transformers_generate_timeout_seconds or 120)),
+    )
+
+
 def generate_answer(
     question: str,
     hits: list[RetrievalHit],
@@ -115,4 +128,6 @@ def generate_answer(
     provider = route_generation_provider(provider, settings=resolved_settings)
     if provider == "ollama":
         return _ollama_answer(question, hits, resolved_settings)
+    if provider == "transformers":
+        return _transformers_answer(question, hits, resolved_settings)
     return _extractive_answer(question, hits)

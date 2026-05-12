@@ -57,7 +57,7 @@ def ask(
 ) -> QueryResponse:
     resolved_settings = settings or Settings.from_env()
     if provider is None:
-        provider = "ollama"
+        provider = resolved_settings.llm_provider
     index = LocalIndex(index_dir, settings=resolved_settings)
     hits = index.search(question, top_k=top_k)
     provider = route_generation_provider(provider, settings=resolved_settings)

@@ -25,7 +25,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("/content/aerospace-rag/data", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_valid_cwd, git_output", source)
         self.assertIn("from aerospace_rag.notebook_runtime import ensure_dependencies", source)
-        self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime", source)
+        self.assertIn("from aerospace_rag.notebook_runtime import ensure_ollama_runtime, ensure_transformers_runtime", source)
         self.assertIn("from aerospace_rag.notebook_runtime import discover_data_files", source)
         self.assertIn("from IPython.display import HTML, Markdown, display", source)
         self.assertNotIn("항공우주 RAG 실행 흐름", source)
@@ -46,11 +46,18 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("format_results_table", source)
         self.assertIn("format_storage_visualization", source)
         self.assertIn("gemma4:e4b", source)
+        self.assertIn("google/gemma-4-E4B-it", source)
         self.assertIn("ANSWER_PROVIDER", source)
         self.assertIn("TOP_K", source)
         self.assertIn("EXTRACTOR_LLM_BACKEND", source)
-        self.assertIn('EXTRACTOR_LLM_BACKEND = "ollama"', code_source)
+        self.assertIn('ANSWER_PROVIDER = "transformers"', code_source)
+        self.assertIn('EXTRACTOR_LLM_BACKEND = "transformers"', code_source)
         self.assertNotIn("EXTRACTOR_FALLBACK_ON_ERROR", source)
+        self.assertIn("TRANSFORMERS_LOAD_IN_4BIT = True", code_source)
+        self.assertIn("TRANSFORMERS_GENERATE_TIMEOUT_SECONDS = 120", code_source)
+        self.assertIn("TRANSFORMERS_EXTRACT_TIMEOUT_SECONDS = 120", code_source)
+        self.assertIn("TRANSFORMERS_ANSWER_NUM_PREDICT = 1024", code_source)
+        self.assertIn("TRANSFORMERS_EXTRACT_NUM_PREDICT = 768", code_source)
         self.assertIn("OLLAMA_EXTRACT_TIMEOUT_SECONDS = 3600", code_source)
         self.assertIn("OLLAMA_GENERATE_TIMEOUT_SECONDS = 3600", code_source)
         self.assertIn("OLLAMA_EXTRACT_RETRIES = 1", code_source)
@@ -91,7 +98,7 @@ class NotebookColabTests(unittest.TestCase):
                 "## 2. 프로젝트 소스 확보",
                 "## 3. 의존성 설치와 버전 고정 확인",
                 "## 4. 실행 설정 확정",
-                "## 5. Ollama 런타임과 모델 준비",
+                "## 5. Transformers 런타임과 모델 준비",
                 "## 6. 데이터 파일 준비",
                 "## 7. 수집/파싱 단독 확인",
                 "## 8. 인덱스 생성",

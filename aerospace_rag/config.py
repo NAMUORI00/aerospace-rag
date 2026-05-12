@@ -24,6 +24,13 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     embed_backend: str = "sentence_transformers"
@@ -46,6 +53,14 @@ class Settings:
     ollama_extract_num_predict: int = 4096
     ollama_answer_num_predict: int = 1024
     ollama_extract_max_chars: int = 1200
+    transformers_model: str = "google/gemma-4-E4B-it"
+    transformers_device_map: str = "auto"
+    transformers_dtype: str = "auto"
+    transformers_load_in_4bit: bool = False
+    transformers_generate_timeout_seconds: int = 120
+    transformers_extract_timeout_seconds: int = 120
+    transformers_answer_num_predict: int = 1024
+    transformers_extract_num_predict: int = 768
     extractor_provider: str = "ollama"
     fusion_mode: str = "hybrid"
     fusion_profile_path: str = ""
@@ -65,7 +80,7 @@ class Settings:
             qdrant_host=os.environ.get("QDRANT_HOST", ""),
             qdrant_port=int(os.environ.get("QDRANT_PORT", "6333")),
             qdrant_url=os.environ.get("QDRANT_URL", ""),
-            llm_provider="ollama",
+            llm_provider=os.environ.get("LLM_PROVIDER", "ollama").strip().lower() or "ollama",
             ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_model=os.environ.get("OLLAMA_MODEL", os.environ.get("GEMMA4_MODEL", "gemma4:e4b")),
             ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
@@ -77,6 +92,14 @@ class Settings:
             ollama_extract_num_predict=_env_int("OLLAMA_EXTRACT_NUM_PREDICT", 4096),
             ollama_answer_num_predict=_env_int("OLLAMA_ANSWER_NUM_PREDICT", 1024),
             ollama_extract_max_chars=_env_int("OLLAMA_EXTRACT_MAX_CHARS", 1200),
+            transformers_model=os.environ.get("TRANSFORMERS_MODEL", os.environ.get("HF_MODEL", "google/gemma-4-E4B-it")),
+            transformers_device_map=os.environ.get("TRANSFORMERS_DEVICE_MAP", "auto"),
+            transformers_dtype=os.environ.get("TRANSFORMERS_DTYPE", "auto"),
+            transformers_load_in_4bit=_env_bool("TRANSFORMERS_LOAD_IN_4BIT", False),
+            transformers_generate_timeout_seconds=_env_int("TRANSFORMERS_GENERATE_TIMEOUT_SECONDS", 120),
+            transformers_extract_timeout_seconds=_env_int("TRANSFORMERS_EXTRACT_TIMEOUT_SECONDS", 120),
+            transformers_answer_num_predict=_env_int("TRANSFORMERS_ANSWER_NUM_PREDICT", 1024),
+            transformers_extract_num_predict=_env_int("TRANSFORMERS_EXTRACT_NUM_PREDICT", 768),
             extractor_provider=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_PROVIDER", "ollama")),
             fusion_mode=os.environ.get("AEROSPACE_FUSION_MODE", "hybrid"),
             fusion_profile_path=os.environ.get("AEROSPACE_FUSION_PROFILE_PATH", ""),
