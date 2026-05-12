@@ -60,7 +60,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn('VLLM_DTYPE = "auto"', code_source)
         self.assertIn('VLLM_QUANTIZATION = "gptq_marlin"', code_source)
         self.assertIn('VLLM_LOAD_FORMAT = "auto"', code_source)
-        self.assertIn("VLLM_GPU_MEMORY_UTILIZATION = 0.70", code_source)
+        self.assertIn("VLLM_GPU_MEMORY_UTILIZATION = 0.82", code_source)
         self.assertIn("VLLM_MAX_MODEL_LEN = 1024", code_source)
         self.assertIn("VLLM_CPU_OFFLOAD_GB = 0.0", code_source)
         self.assertIn("VLLM_ENFORCE_EAGER = True", code_source)
