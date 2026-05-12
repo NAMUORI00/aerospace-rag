@@ -19,6 +19,8 @@ class NotebookColabTests(unittest.TestCase):
 
         self.assertTrue(colab.get("include_colab_link"))
         self.assertTrue(colab.get("toc_visible"))
+        self.assertEqual(nb.metadata.get("accelerator"), "GPU")
+        self.assertEqual(nb.metadata.get("gpuClass"), "standard")
         self.assertIn("colab.research.google.com/github/NAMUORI00/aerospace-rag", source)
         self.assertIn("smartfarm-workspace", source)
         self.assertIn("Google Colab T4", source)
