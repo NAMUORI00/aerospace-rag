@@ -22,7 +22,6 @@ from .models import QueryResponse, RetrievalHit, SourceRef
 REQUIRED_NOTEBOOK_PACKAGES = {
     "qdrant_client": "qdrant-client",
     "vllm": "vllm",
-    "bitsandbytes": "bitsandbytes",
     "docling": "docling",
     "openpyxl": "openpyxl",
     "pypdf": "pypdf",

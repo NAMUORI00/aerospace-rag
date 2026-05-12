@@ -193,8 +193,9 @@ class NotebookRuntimeTests(unittest.TestCase):
                 "LLM_PROVIDER": "vllm",
                 "AEROSPACE_LLM_MODEL": "google/gemma-4-E4B-it",
                 "AEROSPACE_VLLM_DTYPE": "float16",
-                "AEROSPACE_VLLM_QUANTIZATION": "bitsandbytes",
-                "AEROSPACE_VLLM_LOAD_FORMAT": "bitsandbytes",
+                "AEROSPACE_VLLM_QUANTIZATION": "",
+                "AEROSPACE_VLLM_LOAD_FORMAT": "auto",
+                "AEROSPACE_VLLM_ENFORCE_EAGER": "true",
             },
             clear=True,
         ), patch.object(notebook_runtime, "ensure_vllm_model", side_effect=fake_ensure):
@@ -204,8 +205,9 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertEqual(status["model"], "google/gemma-4-E4B-it")
         self.assertEqual(observed["settings"].llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(observed["settings"].vllm_dtype, "float16")
-        self.assertEqual(observed["settings"].vllm_quantization, "bitsandbytes")
-        self.assertEqual(observed["settings"].vllm_load_format, "bitsandbytes")
+        self.assertEqual(observed["settings"].vllm_quantization, "")
+        self.assertEqual(observed["settings"].vllm_load_format, "auto")
+        self.assertTrue(observed["settings"].vllm_enforce_eager)
 
 
 if __name__ == "__main__":

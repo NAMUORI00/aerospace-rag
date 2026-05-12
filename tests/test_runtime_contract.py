@@ -25,9 +25,11 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.llm_provider, "vllm")
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "auto")
-        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
-        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
-        self.assertEqual(settings.vllm_max_model_len, 4096)
+        self.assertEqual(settings.vllm_quantization, "")
+        self.assertEqual(settings.vllm_load_format, "auto")
+        self.assertEqual(settings.vllm_gpu_memory_utilization, 0.82)
+        self.assertEqual(settings.vllm_max_model_len, 2048)
+        self.assertTrue(settings.vllm_enforce_eager)
         self.assertEqual(settings.llm_answer_max_tokens, 1024)
         self.assertEqual(settings.llm_extract_max_tokens, 768)
         self.assertEqual(settings.knowledge_extract_retries, 1)
@@ -47,11 +49,12 @@ class RuntimeContractTests(unittest.TestCase):
                 "EXTRACTOR_LLM_BACKEND": "vllm",
                 "AEROSPACE_LLM_MODEL": "google/gemma-4-E4B-it",
                 "AEROSPACE_VLLM_DTYPE": "float16",
-                "AEROSPACE_VLLM_QUANTIZATION": "bitsandbytes",
-                "AEROSPACE_VLLM_LOAD_FORMAT": "bitsandbytes",
+                "AEROSPACE_VLLM_QUANTIZATION": "awq",
+                "AEROSPACE_VLLM_LOAD_FORMAT": "auto",
                 "AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION": "0.82",
                 "AEROSPACE_VLLM_MAX_MODEL_LEN": "2048",
                 "AEROSPACE_VLLM_TRUST_REMOTE_CODE": "true",
+                "AEROSPACE_VLLM_ENFORCE_EAGER": "false",
                 "LLM_ANSWER_MAX_TOKENS": "321",
                 "LLM_EXTRACT_MAX_TOKENS": "222",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
@@ -66,11 +69,12 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.extractor_backend, "vllm")
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "float16")
-        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
-        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
+        self.assertEqual(settings.vllm_quantization, "awq")
+        self.assertEqual(settings.vllm_load_format, "auto")
         self.assertEqual(settings.vllm_gpu_memory_utilization, 0.82)
         self.assertEqual(settings.vllm_max_model_len, 2048)
         self.assertTrue(settings.vllm_trust_remote_code)
+        self.assertFalse(settings.vllm_enforce_eager)
         self.assertEqual(settings.llm_answer_max_tokens, 321)
         self.assertEqual(settings.llm_extract_max_tokens, 222)
         self.assertEqual(settings.knowledge_extract_retries, 2)
@@ -93,11 +97,12 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "auto")
-        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
-        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
-        self.assertEqual(settings.vllm_gpu_memory_utilization, 0.90)
-        self.assertEqual(settings.vllm_max_model_len, 4096)
+        self.assertEqual(settings.vllm_quantization, "")
+        self.assertEqual(settings.vllm_load_format, "auto")
+        self.assertEqual(settings.vllm_gpu_memory_utilization, 0.82)
+        self.assertEqual(settings.vllm_max_model_len, 2048)
         self.assertFalse(settings.vllm_trust_remote_code)
+        self.assertTrue(settings.vllm_enforce_eager)
 
     def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)
