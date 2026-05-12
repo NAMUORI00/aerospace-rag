@@ -41,7 +41,7 @@ def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, in
         str(settings.vllm_quantization or ""),
         str(settings.vllm_load_format or "auto"),
         float(settings.vllm_gpu_memory_utilization or 0.90),
-        int(settings.vllm_max_model_len or 2048),
+        int(settings.vllm_max_model_len or 1024),
         float(settings.vllm_cpu_offload_gb or 0.0),
         bool(settings.vllm_trust_remote_code),
         bool(settings.vllm_enforce_eager),

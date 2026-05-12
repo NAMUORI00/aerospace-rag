@@ -102,9 +102,9 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(calls["kwargs"]["model"], "ciocan/gemma-4-E4B-it-W4A16")
         self.assertEqual(calls["kwargs"]["quantization"], "gptq_marlin")
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
-        self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
+        self.assertEqual(calls["kwargs"]["max_model_len"], 1024)
         self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 0.0)
-        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.82)
+        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.70)
         self.assertTrue(calls["kwargs"]["enforce_eager"])
 
     def test_vllm_engine_initialization_can_disable_quantized_loading(self) -> None:
