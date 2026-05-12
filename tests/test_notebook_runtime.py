@@ -191,8 +191,8 @@ class NotebookRuntimeTests(unittest.TestCase):
             os.environ,
             {
                 "LLM_PROVIDER": "vllm",
-                "VLLM_MODEL": "google/gemma-4-E4B-it",
-                "VLLM_DTYPE": "float16",
+                "AEROSPACE_LLM_MODEL": "google/gemma-4-E4B-it",
+                "AEROSPACE_VLLM_DTYPE": "float16",
             },
             clear=True,
         ), patch.object(notebook_runtime, "ensure_vllm_model", side_effect=fake_ensure):

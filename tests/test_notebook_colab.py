@@ -62,6 +62,11 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("KNOWLEDGE_EXTRACT_RETRIES = 1", code_source)
         self.assertIn("KNOWLEDGE_EXTRACT_REPAIR_RETRIES = 1", code_source)
         self.assertIn("KNOWLEDGE_EXTRACT_MAX_CHARS = 1200", code_source)
+        self.assertIn('os.environ["AEROSPACE_LLM_MODEL"] = VLLM_MODEL', code_source)
+        self.assertIn('os.environ["AEROSPACE_VLLM_DTYPE"] = VLLM_DTYPE', code_source)
+        self.assertIn("legacy_name", code_source)
+        self.assertIn('os.environ.pop(legacy_name, None)', code_source)
+        self.assertNotIn('os.environ["VLLM_', code_source)
         self.assertIn("GITHUB_REPO_URL", source)
         self.assertIn("DATA_MANIFEST", source)
         self.assertIn("ingest_data(DATA_DIR, strict_expected=False)", source)
@@ -158,7 +163,7 @@ class NotebookColabTests(unittest.TestCase):
 
         self.assertIn("vLLM", section)
         self.assertIn("google/gemma-4-E4B-it", section)
-        self.assertIn("VLLM_MAX_MODEL_LEN", section)
+        self.assertIn("AEROSPACE_VLLM_MAX_MODEL_LEN", section)
 
     def test_notebook_is_clean_for_fresh_colab_execution(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)

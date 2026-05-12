@@ -43,11 +43,11 @@ class RuntimeContractTests(unittest.TestCase):
             os.environ,
             {
                 "EXTRACTOR_LLM_BACKEND": "vllm",
-                "VLLM_MODEL": "google/gemma-4-E4B-it",
-                "VLLM_DTYPE": "float16",
-                "VLLM_GPU_MEMORY_UTILIZATION": "0.82",
-                "VLLM_MAX_MODEL_LEN": "2048",
-                "VLLM_TRUST_REMOTE_CODE": "true",
+                "AEROSPACE_LLM_MODEL": "google/gemma-4-E4B-it",
+                "AEROSPACE_VLLM_DTYPE": "float16",
+                "AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION": "0.82",
+                "AEROSPACE_VLLM_MAX_MODEL_LEN": "2048",
+                "AEROSPACE_VLLM_TRUST_REMOTE_CODE": "true",
                 "LLM_ANSWER_MAX_TOKENS": "321",
                 "LLM_EXTRACT_MAX_TOKENS": "222",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
@@ -70,6 +70,26 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.knowledge_extract_retries, 2)
         self.assertEqual(settings.knowledge_extract_repair_retries, 3)
         self.assertEqual(settings.knowledge_extract_max_chars, 2500)
+
+    def test_settings_ignore_vllm_reserved_environment_names(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "VLLM_MODEL": "reserved-name-should-not-drive-app-config",
+                "VLLM_DTYPE": "reserved-dtype",
+                "VLLM_GPU_MEMORY_UTILIZATION": "0.12",
+                "VLLM_MAX_MODEL_LEN": "128",
+                "VLLM_TRUST_REMOTE_CODE": "true",
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
+        self.assertEqual(settings.vllm_dtype, "auto")
+        self.assertEqual(settings.vllm_gpu_memory_utilization, 0.90)
+        self.assertEqual(settings.vllm_max_model_len, 4096)
+        self.assertFalse(settings.vllm_trust_remote_code)
 
     def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)

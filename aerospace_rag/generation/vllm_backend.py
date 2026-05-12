@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+import os
+import sys
+from collections.abc import Iterator
 from typing import Any
 
 from ..config import Settings
@@ -23,6 +27,49 @@ def _engine_cache_key(settings: Settings) -> tuple[str, str, float, int, bool]:
     )
 
 
+def _supports_fileno(stream: object) -> bool:
+    fileno = getattr(stream, "fileno", None)
+    if fileno is None:
+        return False
+    try:
+        fileno()
+    except Exception:
+        return False
+    return True
+
+
+@contextlib.contextmanager
+def _vllm_initialization_stdio() -> Iterator[None]:
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    fallback_stdout = None
+    fallback_stderr = None
+
+    try:
+        if not _supports_fileno(original_stdout):
+            if _supports_fileno(sys.__stdout__):
+                sys.stdout = sys.__stdout__
+            else:
+                fallback_stdout = open(os.devnull, "w", encoding="utf-8")
+                sys.stdout = fallback_stdout
+
+        if not _supports_fileno(original_stderr):
+            if _supports_fileno(sys.__stderr__):
+                sys.stderr = sys.__stderr__
+            else:
+                fallback_stderr = open(os.devnull, "w", encoding="utf-8")
+                sys.stderr = fallback_stderr
+
+        yield
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        if fallback_stdout is not None:
+            fallback_stdout.close()
+        if fallback_stderr is not None:
+            fallback_stderr.close()
+
+
 def _load_vllm_engine(settings: Settings) -> Any:
     key = _engine_cache_key(settings)
     if key in _ENGINE_CACHE:
@@ -37,13 +84,14 @@ def _load_vllm_engine(settings: Settings) -> Any:
         ) from exc
 
     model_id, dtype, gpu_memory_utilization, max_model_len, trust_remote_code = key
-    engine = LLM(
-        model=model_id,
-        dtype=dtype,
-        gpu_memory_utilization=gpu_memory_utilization,
-        max_model_len=max_model_len,
-        trust_remote_code=trust_remote_code,
-    )
+    with _vllm_initialization_stdio():
+        engine = LLM(
+            model=model_id,
+            dtype=dtype,
+            gpu_memory_utilization=gpu_memory_utilization,
+            max_model_len=max_model_len,
+            trust_remote_code=trust_remote_code,
+        )
     _ENGINE_CACHE[key] = engine
     return engine
 

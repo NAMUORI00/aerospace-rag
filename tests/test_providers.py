@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from aerospace_rag.config import Settings
+from aerospace_rag.generation import vllm_backend
 from aerospace_rag.generation import providers as provider_module
 from aerospace_rag.generation.providers import generate_answer
 from aerospace_rag.models import Chunk, RetrievalHit
@@ -74,6 +75,28 @@ class ProviderTests(unittest.TestCase):
         user_prompt = str(observed["messages"][1]["content"])
         self.assertIn("표 데이터:", user_prompt)
         self.assertIn("| EO/K3 | $2,048 | $4,096 |", user_prompt)
+
+    def test_vllm_engine_initialization_uses_real_stdout_when_kernel_stdout_has_no_fileno(self) -> None:
+        calls: dict[str, object] = {}
+
+        class FakeStdout:
+            def fileno(self) -> int:
+                raise OSError("fileno")
+
+        class FakeLLM:
+            def __init__(self, **kwargs: object) -> None:
+                import sys
+
+                calls["kwargs"] = kwargs
+                calls["stdout_is_real"] = sys.stdout is sys.__stdout__
+
+        with patch.dict("sys.modules", {"vllm": type("FakeVllm", (), {"LLM": FakeLLM})}):
+            with patch("sys.stdout", FakeStdout()):
+                vllm_backend._ENGINE_CACHE.clear()
+                vllm_backend._load_vllm_engine(Settings())
+
+        self.assertTrue(calls["stdout_is_real"])
+        self.assertEqual(calls["kwargs"]["model"], "google/gemma-4-E4B-it")
 
 
 if __name__ == "__main__":
