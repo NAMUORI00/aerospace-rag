@@ -14,7 +14,19 @@ _ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool, boo
 
 def resolve_llm_model(model: str | None) -> str:
     requested = str(model or "").strip()
-    return requested or "google/gemma-4-E4B-it"
+    return requested or "ciocan/gemma-4-E4B-it-W4A16"
+
+
+def _configure_vllm_engine_mode(settings: Settings) -> None:
+    desired = "1" if settings.vllm_use_v1 else "0"
+    loaded_envs = sys.modules.get("vllm.envs")
+    loaded_use_v1 = getattr(loaded_envs, "VLLM_USE_V1", None)
+    if loaded_use_v1 is not None and bool(loaded_use_v1) != settings.vllm_use_v1:
+        raise RuntimeError(
+            "vLLM was already imported with a different VLLM_USE_V1 mode. "
+            "Restart the Python runtime, then run the notebook from the first cell."
+        )
+    os.environ["VLLM_USE_V1"] = desired
 
 
 def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, float, bool, bool, bool]:
@@ -23,7 +35,7 @@ def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, in
         str(settings.vllm_dtype or "auto"),
         str(settings.vllm_quantization or ""),
         str(settings.vllm_load_format or "auto"),
-        float(settings.vllm_gpu_memory_utilization or 0.82),
+        float(settings.vllm_gpu_memory_utilization or 0.90),
         int(settings.vllm_max_model_len or 2048),
         float(settings.vllm_cpu_offload_gb or 0.0),
         bool(settings.vllm_trust_remote_code),
@@ -80,8 +92,7 @@ def _load_vllm_engine(settings: Settings) -> Any:
     if key in _ENGINE_CACHE:
         return _ENGINE_CACHE[key]
 
-    if not settings.vllm_use_v1:
-        os.environ.setdefault("VLLM_USE_V1", "0")
+    _configure_vllm_engine_mode(settings)
     try:
         from vllm import LLM
     except Exception as exc:

@@ -95,15 +95,15 @@ class ProviderTests(unittest.TestCase):
             with patch.dict(os.environ, {}, clear=True), patch("sys.stdout", FakeStdout()):
                 vllm_backend._ENGINE_CACHE.clear()
                 vllm_backend._load_vllm_engine(Settings())
-                self.assertEqual(os.environ.get("VLLM_USE_V1"), "0")
+                self.assertEqual(os.environ.get("VLLM_USE_V1"), "1")
 
         self.assertTrue(calls["stdout_is_real"])
-        self.assertEqual(calls["kwargs"]["model"], "google/gemma-4-E4B-it")
-        self.assertNotIn("quantization", calls["kwargs"])
+        self.assertEqual(calls["kwargs"]["model"], "ciocan/gemma-4-E4B-it-W4A16")
+        self.assertEqual(calls["kwargs"]["quantization"], "gptq")
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
-        self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 1.0)
-        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.82)
+        self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 0.0)
+        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.90)
         self.assertTrue(calls["kwargs"]["enforce_eager"])
 
     def test_vllm_engine_initialization_can_disable_quantized_loading(self) -> None:
@@ -145,6 +145,13 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(calls["kwargs"]["quantization"], "awq")
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertFalse(calls["kwargs"]["enforce_eager"])
+
+    def test_vllm_engine_initialization_rejects_stale_engine_mode(self) -> None:
+        fake_envs = type("FakeEnv", (), {"VLLM_USE_V1": False})
+
+        with patch.dict("sys.modules", {"vllm.envs": fake_envs}):
+            with self.assertRaisesRegex(RuntimeError, "Restart the Python runtime"):
+                vllm_backend._configure_vllm_engine_mode(Settings(vllm_use_v1=True))
 
 
 if __name__ == "__main__":

@@ -45,16 +45,16 @@ class Settings:
     knowledge_extract_retries: int = 1
     knowledge_extract_repair_retries: int = 1
     knowledge_extract_max_chars: int = 1200
-    llm_model: str = "google/gemma-4-E4B-it"
+    llm_model: str = "ciocan/gemma-4-E4B-it-W4A16"
     vllm_dtype: str = "auto"
-    vllm_quantization: str = ""
+    vllm_quantization: str = "gptq"
     vllm_load_format: str = "auto"
-    vllm_gpu_memory_utilization: float = 0.82
+    vllm_gpu_memory_utilization: float = 0.90
     vllm_max_model_len: int = 2048
-    vllm_cpu_offload_gb: float = 1.0
+    vllm_cpu_offload_gb: float = 0.0
     vllm_trust_remote_code: bool = False
     vllm_enforce_eager: bool = True
-    vllm_use_v1: bool = False
+    vllm_use_v1: bool = True
     llm_answer_max_tokens: int = 1024
     llm_extract_max_tokens: int = 768
     extractor_backend: str = "vllm"
@@ -80,16 +80,18 @@ class Settings:
             knowledge_extract_retries=_env_int("KNOWLEDGE_EXTRACT_RETRIES", 1),
             knowledge_extract_repair_retries=_env_int("KNOWLEDGE_EXTRACT_REPAIR_RETRIES", 1),
             knowledge_extract_max_chars=_env_int("KNOWLEDGE_EXTRACT_MAX_CHARS", 1200),
-            llm_model=os.environ.get("AEROSPACE_LLM_MODEL", os.environ.get("LLM_MODEL", "google/gemma-4-E4B-it")),
+            llm_model=os.environ.get(
+                "AEROSPACE_LLM_MODEL", os.environ.get("LLM_MODEL", "ciocan/gemma-4-E4B-it-W4A16")
+            ),
             vllm_dtype=os.environ.get("AEROSPACE_VLLM_DTYPE", "auto"),
-            vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", ""),
+            vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", "gptq"),
             vllm_load_format=os.environ.get("AEROSPACE_VLLM_LOAD_FORMAT", "auto"),
-            vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.82),
+            vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.90),
             vllm_max_model_len=_env_int("AEROSPACE_VLLM_MAX_MODEL_LEN", 2048),
-            vllm_cpu_offload_gb=_env_float("AEROSPACE_VLLM_CPU_OFFLOAD_GB", 1.0),
+            vllm_cpu_offload_gb=_env_float("AEROSPACE_VLLM_CPU_OFFLOAD_GB", 0.0),
             vllm_trust_remote_code=_env_bool("AEROSPACE_VLLM_TRUST_REMOTE_CODE", False),
             vllm_enforce_eager=_env_bool("AEROSPACE_VLLM_ENFORCE_EAGER", True),
-            vllm_use_v1=_env_bool("AEROSPACE_VLLM_USE_V1", False),
+            vllm_use_v1=_env_bool("AEROSPACE_VLLM_USE_V1", True),
             llm_answer_max_tokens=_env_int("LLM_ANSWER_MAX_TOKENS", 1024),
             llm_extract_max_tokens=_env_int("LLM_EXTRACT_MAX_TOKENS", 768),
             extractor_backend=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_BACKEND", "vllm")),
