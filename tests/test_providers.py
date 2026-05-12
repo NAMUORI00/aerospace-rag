@@ -99,7 +99,7 @@ class ProviderTests(unittest.TestCase):
 
         self.assertTrue(calls["stdout_is_real"])
         self.assertEqual(calls["kwargs"]["model"], "ciocan/gemma-4-E4B-it-W4A16")
-        self.assertEqual(calls["kwargs"]["quantization"], "gptq")
+        self.assertEqual(calls["kwargs"]["quantization"], "gptq_marlin")
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
         self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 0.0)

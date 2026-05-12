@@ -47,7 +47,7 @@ class Settings:
     knowledge_extract_max_chars: int = 1200
     llm_model: str = "ciocan/gemma-4-E4B-it-W4A16"
     vllm_dtype: str = "auto"
-    vllm_quantization: str = "gptq"
+    vllm_quantization: str = "gptq_marlin"
     vllm_load_format: str = "auto"
     vllm_gpu_memory_utilization: float = 0.90
     vllm_max_model_len: int = 2048
@@ -84,7 +84,7 @@ class Settings:
                 "AEROSPACE_LLM_MODEL", os.environ.get("LLM_MODEL", "ciocan/gemma-4-E4B-it-W4A16")
             ),
             vllm_dtype=os.environ.get("AEROSPACE_VLLM_DTYPE", "auto"),
-            vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", "gptq"),
+            vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", "gptq_marlin"),
             vllm_load_format=os.environ.get("AEROSPACE_VLLM_LOAD_FORMAT", "auto"),
             vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.90),
             vllm_max_model_len=_env_int("AEROSPACE_VLLM_MAX_MODEL_LEN", 2048),

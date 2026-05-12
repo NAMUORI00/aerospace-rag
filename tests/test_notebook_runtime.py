@@ -193,7 +193,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                 "LLM_PROVIDER": "vllm",
                 "AEROSPACE_LLM_MODEL": "ciocan/gemma-4-E4B-it-W4A16",
                 "AEROSPACE_VLLM_DTYPE": "float16",
-                "AEROSPACE_VLLM_QUANTIZATION": "gptq",
+                "AEROSPACE_VLLM_QUANTIZATION": "gptq_marlin",
                 "AEROSPACE_VLLM_LOAD_FORMAT": "auto",
                 "AEROSPACE_VLLM_CPU_OFFLOAD_GB": "0.0",
                 "AEROSPACE_VLLM_ENFORCE_EAGER": "true",
@@ -207,7 +207,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertEqual(status["model"], "ciocan/gemma-4-E4B-it-W4A16")
         self.assertEqual(observed["settings"].llm_model, "ciocan/gemma-4-E4B-it-W4A16")
         self.assertEqual(observed["settings"].vllm_dtype, "float16")
-        self.assertEqual(observed["settings"].vllm_quantization, "gptq")
+        self.assertEqual(observed["settings"].vllm_quantization, "gptq_marlin")
         self.assertEqual(observed["settings"].vllm_load_format, "auto")
         self.assertEqual(observed["settings"].vllm_cpu_offload_gb, 0.0)
         self.assertTrue(observed["settings"].vllm_enforce_eager)

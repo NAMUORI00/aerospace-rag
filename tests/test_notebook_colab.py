@@ -56,7 +56,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn('EXTRACTOR_LLM_BACKEND = "vllm"', code_source)
         self.assertNotIn("EXTRACTOR_FALLBACK_ON_ERROR", source)
         self.assertIn('VLLM_DTYPE = "auto"', code_source)
-        self.assertIn('VLLM_QUANTIZATION = "gptq"', code_source)
+        self.assertIn('VLLM_QUANTIZATION = "gptq_marlin"', code_source)
         self.assertIn('VLLM_LOAD_FORMAT = "auto"', code_source)
         self.assertIn("VLLM_GPU_MEMORY_UTILIZATION = 0.90", code_source)
         self.assertIn("VLLM_MAX_MODEL_LEN = 2048", code_source)

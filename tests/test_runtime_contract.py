@@ -25,7 +25,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.llm_provider, "vllm")
         self.assertEqual(settings.llm_model, "ciocan/gemma-4-E4B-it-W4A16")
         self.assertEqual(settings.vllm_dtype, "auto")
-        self.assertEqual(settings.vllm_quantization, "gptq")
+        self.assertEqual(settings.vllm_quantization, "gptq_marlin")
         self.assertEqual(settings.vllm_load_format, "auto")
         self.assertEqual(settings.vllm_gpu_memory_utilization, 0.90)
         self.assertEqual(settings.vllm_max_model_len, 2048)
@@ -103,7 +103,7 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(settings.llm_model, "ciocan/gemma-4-E4B-it-W4A16")
         self.assertEqual(settings.vllm_dtype, "auto")
-        self.assertEqual(settings.vllm_quantization, "gptq")
+        self.assertEqual(settings.vllm_quantization, "gptq_marlin")
         self.assertEqual(settings.vllm_load_format, "auto")
         self.assertEqual(settings.vllm_gpu_memory_utilization, 0.90)
         self.assertEqual(settings.vllm_max_model_len, 2048)
