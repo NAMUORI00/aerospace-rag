@@ -49,7 +49,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_graph_store_uses_extracted_relations_for_neighbor_search(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            graph = GraphStore(Path(tmp) / "index", settings=Settings(extractor_provider="local_fallback"))
+            graph = GraphStore(Path(tmp) / "index", settings=Settings(extractor_backend="local_fallback"))
             chunks = [
                 Chunk(
                     chunk_id="c1",
@@ -118,7 +118,7 @@ class RuntimeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            settings = Settings(embed_backend="hash", vector_backend="json", extractor_provider="local_fallback")
+            settings = Settings(embed_backend="hash", vector_backend="json", extractor_backend="local_fallback")
             result = build_index(data_dir=data, index_dir=index, strict_expected=False, settings=settings)
             self.assertIsNotNone(result.fusion_profile_path)
             self.assertIsNotNone(result.fusion_profile_meta_path)
@@ -143,7 +143,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_local_index_loads_runtime_profile_from_index_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings = Settings(embed_backend="hash", embed_dim=384, vector_backend="json", extractor_provider="local_fallback")
+            settings = Settings(embed_backend="hash", embed_dim=384, vector_backend="json", extractor_backend="local_fallback")
             index_dir = Path(tmp) / "index"
             index = LocalIndex(index_dir, settings=settings)
             index.build(
@@ -178,7 +178,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_lexical_rerank_promotes_matching_structured_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings = Settings(embed_backend="hash", vector_backend="json", extractor_provider="local_fallback")
+            settings = Settings(embed_backend="hash", vector_backend="json", extractor_backend="local_fallback")
             index = LocalIndex(Path(tmp) / "index", settings=settings)
             index.build(
                 [

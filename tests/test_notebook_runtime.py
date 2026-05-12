@@ -4,7 +4,6 @@ import contextlib
 import io
 import json
 import os
-import subprocess as real_subprocess
 import sys
 import tempfile
 import types
@@ -97,7 +96,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                     channels={"qdrant": 0.3},
                 )
             ],
-            routing={"provider": "ollama"},
+            routing={"provider": "transformers"},
             diagnostics={"channels": ["bm25", "qdrant"]},
         )
 
@@ -118,7 +117,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                 SourceRef("doc#2", "alpha.pdf", "text", 0.6, "B"),
                 SourceRef("doc#3", "beta.pdf", "text", 0.5, "C"),
             ],
-            routing={"provider": "ollama"},
+            routing={"provider": "transformers"},
             diagnostics={"channels": ["bm25", "graph"]},
         )
 
@@ -126,7 +125,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         table = notebook_runtime.format_results_table([row], columns=["case", "question", "summary", "top_source", "source_files"])
 
         self.assertEqual(row["case"], 2)
-        self.assertEqual(row["provider"], "ollama")
+        self.assertEqual(row["provider"], "transformers")
         self.assertEqual(row["top_source"], "alpha.pdf")
         self.assertEqual(row["source_files"], "alpha.pdf, beta.pdf")
         self.assertIn("첫 문장입니다.", row["summary"])
@@ -169,7 +168,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         response = QueryResponse(
             answer="가격 차이는 다음과 같습니다:\n\n- **저장영상(AO)**: 기존 보유 영상 기준 가격\n- 신규촬영(NTO): 신규 촬영 요청 기준 가격",
             sources=[SourceRef("doc#1", "alpha.pdf", "text", 0.7, "A")],
-            routing={"provider": "ollama"},
+            routing={"provider": "transformers"},
             diagnostics={"channels": ["bm25"]},
         )
 
@@ -181,44 +180,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertNotIn("- 신규촬영", row["summary"])
         self.assertIn("가격 차이는 다음과 같습니다: 저장영상(AO): 기존 보유 영상 기준 가격", table)
 
-    def test_ollama_install_failure_keeps_fixed_ollama_provider(self) -> None:
-        class FakeShutil:
-            @staticmethod
-            def which(name: str) -> None:
-                return None
-
-        class FakeSubprocess:
-            DEVNULL = real_subprocess.DEVNULL
-            STDOUT = real_subprocess.STDOUT
-
-            def __init__(self) -> None:
-                self.calls: list[tuple[object, bool]] = []
-
-            def check_call(self, args: object, shell: bool = False) -> None:
-                self.calls.append((args, shell))
-                if args == "curl -fsSL https://ollama.com/install.sh | sh":
-                    raise real_subprocess.CalledProcessError(1, args)
-
-            def Popen(self, *args: object, **kwargs: object) -> None:
-                raise AssertionError("Ollama server should not start after install failure")
-
-        fake_subprocess = FakeSubprocess()
-        with patch.dict(
-            os.environ,
-            {
-                "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
-                "OLLAMA_MODEL": "gemma4:e2b",
-                "OLLAMA_API_KEY": "",
-            },
-            clear=True,
-        ), patch.object(notebook_runtime, "shutil", FakeShutil), patch.object(notebook_runtime, "subprocess", fake_subprocess):
-            status = notebook_runtime.ensure_ollama_runtime(True, in_colab=True)
-
-        self.assertFalse(status["ready"])
-        self.assertIn((["apt-get", "install", "-y", "zstd"], False), fake_subprocess.calls)
-        self.assertNotIn("LLM_PROVIDER", os.environ)
-
-    def test_transformers_runtime_preloads_configured_model(self) -> None:
+    def test_model_runtime_preloads_configured_model(self) -> None:
         observed: dict[str, object] = {}
 
         def fake_ensure(settings: object) -> dict[str, object]:
@@ -234,7 +196,7 @@ class NotebookRuntimeTests(unittest.TestCase):
             },
             clear=True,
         ), patch.object(notebook_runtime, "ensure_transformers_model", side_effect=fake_ensure):
-            status = notebook_runtime.ensure_transformers_runtime(True)
+            status = notebook_runtime.ensure_model_runtime(True)
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["model"], "google/gemma-4-E4B-it")

@@ -6,7 +6,6 @@ import re
 from dataclasses import asdict, dataclass
 from itertools import combinations
 from typing import Any
-import urllib.request
 
 from ..config import Settings
 from ..generation.transformers_backend import generate_transformers_chat
@@ -156,11 +155,22 @@ def parse_llm_json_object(content: str) -> dict[str, Any]:
         text = re.sub(r"\s*```$", "", text).strip()
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if match is None:
-            raise
-        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError as exc:
+        decoder = json.JSONDecoder()
+        stripped = text.lstrip()
+        if stripped.startswith("{"):
+            try:
+                parsed, _ = decoder.raw_decode(stripped)
+            except json.JSONDecodeError:
+                raise exc
+        else:
+            match = re.search(r"\{", text)
+            if match is None:
+                raise
+            try:
+                parsed, _ = decoder.raw_decode(text[match.start() :])
+            except json.JSONDecodeError:
+                raise exc
     if not isinstance(parsed, dict):
         raise ValueError("LLM JSON response must be an object")
     return parsed
@@ -202,85 +212,21 @@ def extract_entity_texts(chunk: Chunk) -> list[str]:
 
 
 class KnowledgeExtractor:
-    """Knowledge extractor with Ollama/Transformers model paths and explicit local debug mode."""
+    """Knowledge extractor with a Transformers model path and explicit local debug mode."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
 
     def extract(self, chunk: Chunk) -> ExtractionResult:
-        provider = str(self.settings.extractor_provider or "ollama").strip().lower()
-        if provider == "ollama":
-            return self._extract_with_ollama(chunk)
+        provider = str(self.settings.extractor_backend or "transformers").strip().lower()
         if provider == "transformers":
             return self._extract_with_transformers(chunk)
         if provider in {"local", "local_fallback", "debug_local"}:
             return self._extract_local_debug(chunk)
-        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'ollama', 'transformers', or explicit debug mode 'local_fallback'.")
-
-    def _extract_with_ollama(self, chunk: Chunk) -> ExtractionResult:
-        base_url = str(self.settings.ollama_base_url or "").strip().rstrip("/")
-        model = str(self.settings.ollama_model or "").strip()
-        if not base_url or not model:
-            raise RuntimeError("Ollama extraction requires OLLAMA_BASE_URL and OLLAMA_MODEL.")
-        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 1200))
-        chunk_text = chunk.text[:max_chars]
-        schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
-        system_prompt = (
-            "You extract compact aerospace retrieval knowledge. Return only one minified JSON object. "
-            "The response must validate against this JSON Schema. Do not include markdown or commentary.\n"
-            f"JSON Schema: {schema_text}"
-        )
-        prompt = (
-            "Extract entities and relations from this chunk. "
-            "Use canonical_id values in relation source/target. "
-            "If there is no reliable item, return empty arrays.\n\n"
-            f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk_text}"
-        )
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            "stream": False,
-            "format": EXTRACTION_JSON_SCHEMA,
-            "think": False,
-            "keep_alive": str(self.settings.ollama_keep_alive or "10m"),
-            "options": {
-                "temperature": 0.0,
-                "num_predict": max(128, int(self.settings.ollama_extract_num_predict or 768)),
-            },
-        }
-        headers = {"Content-Type": "application/json"}
-        if self.settings.ollama_api_key:
-            headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
-        timeout = max(1, int(self.settings.ollama_extract_timeout_seconds or 3600))
-        attempts = max(0, int(self.settings.ollama_extract_retries or 0)) + 1
-        last_error: Exception | None = None
-        parsed: dict[str, Any] | None = None
-        for _ in range(attempts):
-            try:
-                content = self._ollama_chat(base_url=base_url, payload=payload, headers=headers, timeout=timeout)
-                parsed = self._parse_or_repair_json(
-                    content,
-                    base_url=base_url,
-                    model=model,
-                    headers=headers,
-                    timeout=timeout,
-                    system_prompt=system_prompt,
-                )
-                break
-            except Exception as exc:
-                last_error = exc
-        if parsed is None:
-            raise RuntimeError(
-                "Ollama knowledge extraction failed. Start Ollama, pull the configured model, "
-                "or increase OLLAMA_EXTRACT_TIMEOUT_SECONDS."
-            ) from last_error
-        return self._result_from_parsed(parsed, chunk)
+        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'transformers' or explicit debug mode 'local_fallback'.")
 
     def _extract_with_transformers(self, chunk: Chunk) -> ExtractionResult:
-        max_chars = max(500, int(self.settings.ollama_extract_max_chars or 1200))
+        max_chars = max(500, int(self.settings.knowledge_extract_max_chars or 1200))
         chunk_text = chunk.text[:max_chars]
         schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
         system_prompt = (
@@ -294,7 +240,7 @@ class KnowledgeExtractor:
             "If there is no reliable item, return empty arrays.\n\n"
             f"Document: {chunk.source_file}\nChunk: {chunk.chunk_id}\nText:\n{chunk_text}"
         )
-        attempts = max(0, int(self.settings.ollama_extract_retries or 0)) + 1
+        attempts = max(0, int(self.settings.knowledge_extract_retries or 0)) + 1
         last_error: Exception | None = None
         for _ in range(attempts):
             try:
@@ -350,70 +296,6 @@ class KnowledgeExtractor:
                 )
             )
         return ExtractionResult(entities=entities[:64], relations=relations[:128])
-
-    def _ollama_chat(
-        self,
-        *,
-        base_url: str,
-        payload: dict[str, Any],
-        headers: dict[str, str],
-        timeout: int,
-    ) -> str:
-        req = urllib.request.Request(
-            base_url + "/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
-        return str(((body.get("message") or {}).get("content")) or "")
-
-    def _parse_or_repair_json(
-        self,
-        content: str,
-        *,
-        base_url: str,
-        model: str,
-        headers: dict[str, str],
-        timeout: int,
-        system_prompt: str,
-    ) -> dict[str, Any]:
-        try:
-            return parse_llm_json_object(content)
-        except Exception as exc:
-            last_error: Exception = exc
-
-        repair_retries = max(0, int(self.settings.ollama_extract_repair_retries or 0))
-        for _ in range(repair_retries):
-            repair_payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": (
-                            "Repair this malformed JSON so it validates against the schema. "
-                            "Return only the repaired minified JSON object.\n\n"
-                            f"Malformed JSON:\n{content[:12000]}"
-                        ),
-                    },
-                ],
-                "stream": False,
-                "format": EXTRACTION_JSON_SCHEMA,
-                "think": False,
-                "keep_alive": str(self.settings.ollama_keep_alive or "10m"),
-                "options": {
-                    "temperature": 0.0,
-                    "num_predict": max(128, int(self.settings.ollama_extract_num_predict or 4096)),
-                },
-            }
-            try:
-                repaired = self._ollama_chat(base_url=base_url, payload=repair_payload, headers=headers, timeout=timeout)
-                return parse_llm_json_object(repaired)
-            except Exception as exc:
-                last_error = exc
-        raise last_error
 
     def _extract_local_debug(self, chunk: Chunk) -> ExtractionResult:
         entity_texts = extract_entity_texts(chunk)

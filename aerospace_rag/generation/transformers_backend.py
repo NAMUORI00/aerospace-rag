@@ -10,15 +10,7 @@ _MODEL_CACHE: dict[tuple[str, str, str, bool], tuple[Any, Any]] = {}
 
 def resolve_transformers_model(model: str | None) -> str:
     requested = str(model or "").strip()
-    aliases = {
-        "gemma4": "google/gemma-4-E4B-it",
-        "gemma4:latest": "google/gemma-4-E4B-it",
-        "gemma4:e4b": "google/gemma-4-E4B-it",
-        "gemma4:e2b": "google/gemma-4-E2B-it",
-        "gemma4:31b": "google/gemma-4-31B-it",
-        "gemma4:26b": "google/gemma-4-26B-A4B-it",
-    }
-    return aliases.get(requested.lower(), requested or "google/gemma-4-E4B-it")
+    return requested or "google/gemma-4-E4B-it"
 
 
 def _model_cache_key(settings: Settings) -> tuple[str, str, str, bool]:

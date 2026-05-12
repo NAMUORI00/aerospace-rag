@@ -11,8 +11,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
-import urllib.request
 from typing import Any, Iterable, Mapping, Sequence
 
 from .config import Settings
@@ -100,94 +98,17 @@ def ensure_dependencies(project_root: Path, in_colab: bool) -> dict[str, str]:
     return snapshot
 
 
-def ollama_headers() -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    if os.environ.get("OLLAMA_API_KEY"):
-        headers["Authorization"] = "Bearer " + os.environ["OLLAMA_API_KEY"]
-    return headers
-
-
-def ollama_api_ok() -> bool:
-    try:
-        req = urllib.request.Request(
-            os.environ["OLLAMA_BASE_URL"].rstrip("/") + "/api/tags",
-            headers=ollama_headers(),
-        )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            return response.status == 200
-    except Exception:
-        return False
-
-
-def mark_ollama_unavailable(reason: str) -> dict[str, object]:
-    print("Ollama unavailable; generation backend remains Ollama.")
-    print('ask() will raise until Ollama is ready; set ANSWER_PROVIDER = "extractive" for no-LLM debugging.')
-    print("Reason:", reason)
-    return {"ready": False, "reason": reason}
-
-
-def ensure_transformers_runtime(llm_needed: bool) -> dict[str, object]:
+def ensure_model_runtime(llm_needed: bool) -> dict[str, object]:
     if not llm_needed:
         return {"ready": False, "reason": "LLM not requested"}
     try:
         status = ensure_transformers_model(Settings.from_env())
     except Exception as exc:
-        print("Transformers runtime unavailable.")
+        print("Model runtime unavailable.")
         print("Reason:", exc)
         return {"ready": False, "reason": str(exc)}
-    print("Transformers ready:", status["model"], "device_map:", status["device_map"])
+    print("Model runtime ready:", status["model"], "device_map:", status["device_map"])
     return status
-
-
-def ensure_ollama_runtime(llm_needed: bool, *, in_colab: bool, pull_model: bool = True) -> dict[str, object]:
-    if not llm_needed:
-        return {"ready": False, "reason": "LLM not requested"}
-    model = os.environ["OLLAMA_MODEL"]
-    base_url = os.environ["OLLAMA_BASE_URL"].rstrip("/")
-    if base_url == "https://ollama.com":
-        if ollama_api_ok():
-            print("Ollama cloud ready:", base_url, "model:", model)
-            return {"ready": True, "model": model, "base_url": base_url}
-        return mark_ollama_unavailable("Ollama cloud API did not respond on " + base_url)
-
-    if not in_colab:
-        print("Local runtime: ensure Ollama is running separately.")
-        print("Expected:", base_url, "model:", model)
-        return {"ready": False, "reason": "local runtime requires external Ollama"}
-
-    if shutil.which("ollama") is None:
-        print("Installing Ollama...")
-        try:
-            if shutil.which("zstd") is None:
-                print("Installing Ollama prerequisite: zstd")
-                subprocess.check_call(["apt-get", "install", "-y", "zstd"])
-            subprocess.check_call("curl -fsSL https://ollama.com/install.sh | sh", shell=True)
-        except Exception as exc:
-            return mark_ollama_unavailable(f"Ollama install failed: {exc}")
-
-    if not ollama_api_ok():
-        print("Starting Ollama server...")
-        try:
-            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        except Exception as exc:
-            return mark_ollama_unavailable(f"Ollama server start failed: {exc}")
-        for _ in range(60):
-            if ollama_api_ok():
-                break
-            time.sleep(1)
-
-    if not ollama_api_ok():
-        return mark_ollama_unavailable("Ollama server did not become ready on " + base_url)
-
-    if pull_model:
-        print("Pulling Ollama model:", model)
-        try:
-            subprocess.check_call(["ollama", "pull", model])
-        except Exception as exc:
-            return mark_ollama_unavailable(f"Ollama model pull failed: {exc}")
-
-    print("Ollama ready:", base_url, "model:", model)
-    return {"ready": True, "model": model, "base_url": base_url}
 
 
 def import_google_drive_data(

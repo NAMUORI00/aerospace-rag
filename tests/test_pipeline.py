@@ -19,7 +19,7 @@ def has_private_dataset() -> bool:
 
 class AerospacePipelineTests(unittest.TestCase):
     def _test_settings(self) -> Settings:
-        return Settings(embed_backend="hash", embed_dim=384, vector_backend="json", extractor_provider="local_fallback")
+        return Settings(embed_backend="hash", embed_dim=384, vector_backend="json", extractor_backend="local_fallback")
 
     @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
     def test_build_index_ingests_all_existing_dataset_files(self) -> None:
