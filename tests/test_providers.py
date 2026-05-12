@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import types
 import unittest
 from unittest.mock import patch
 
@@ -157,6 +158,63 @@ class ProviderTests(unittest.TestCase):
         import builtins
 
         self.assertIs(vllm_backend._ENGINE_CACHE, getattr(builtins, "_aerospace_rag_vllm_engine_cache"))
+
+    def test_vllm_sampling_falls_back_when_guided_decoding_is_unavailable(self) -> None:
+        calls: list[dict[str, object]] = []
+
+        class FakeSamplingParams:
+            def __init__(self, **kwargs: object) -> None:
+                calls.append(kwargs)
+
+        fake_vllm = types.ModuleType("vllm")
+        fake_vllm.SamplingParams = FakeSamplingParams  # type: ignore[attr-defined]
+
+        with patch.dict("sys.modules", {"vllm": fake_vllm}, clear=False):
+            vllm_backend._sampling_params(max_tokens=64, json_schema={"type": "object"})
+
+        self.assertEqual(calls, [{"temperature": 0.0, "max_tokens": 64}])
+
+    def test_vllm_generation_retries_without_guided_decoding_after_import_error(self) -> None:
+        params: list[dict[str, object]] = []
+        attempts: list[object] = []
+
+        class FakeSamplingParams:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                params.append(kwargs)
+
+        class FakeGuidedDecodingParams:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+
+        class FakeEngine:
+            def chat(self, messages: list[list[dict[str, str]]], *, sampling_params: object, use_tqdm: bool) -> list[object]:
+                attempts.append(sampling_params)
+                if len(attempts) == 1:
+                    raise ImportError("guided backend unavailable")
+                output = type("FakeCompletion", (), {"text": "ok"})()
+                return [type("FakeRequestOutput", (), {"outputs": [output]})()]
+
+        fake_vllm = types.ModuleType("vllm")
+        fake_vllm.SamplingParams = FakeSamplingParams  # type: ignore[attr-defined]
+        fake_sampling_params = types.ModuleType("vllm.sampling_params")
+        fake_sampling_params.GuidedDecodingParams = FakeGuidedDecodingParams  # type: ignore[attr-defined]
+
+        with patch.dict(
+            "sys.modules",
+            {"vllm": fake_vllm, "vllm.sampling_params": fake_sampling_params},
+            clear=False,
+        ), patch.object(vllm_backend, "_load_vllm_engine", return_value=FakeEngine()):
+            answer = vllm_backend.generate_vllm_chat(
+                [{"role": "user", "content": "Return JSON"}],
+                settings=Settings(),
+                max_tokens=32,
+                json_schema={"type": "object"},
+            )
+
+        self.assertEqual(answer, "ok")
+        self.assertIn("guided_decoding", params[0])
+        self.assertNotIn("guided_decoding", params[1])
 
 
 if __name__ == "__main__":
