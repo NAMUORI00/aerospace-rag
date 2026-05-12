@@ -49,7 +49,7 @@ class Settings:
     vllm_dtype: str = "auto"
     vllm_quantization: str = "gptq_marlin"
     vllm_load_format: str = "auto"
-    vllm_gpu_memory_utilization: float = 0.90
+    vllm_gpu_memory_utilization: float = 0.82
     vllm_max_model_len: int = 2048
     vllm_cpu_offload_gb: float = 0.0
     vllm_trust_remote_code: bool = False
@@ -86,7 +86,7 @@ class Settings:
             vllm_dtype=os.environ.get("AEROSPACE_VLLM_DTYPE", "auto"),
             vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", "gptq_marlin"),
             vllm_load_format=os.environ.get("AEROSPACE_VLLM_LOAD_FORMAT", "auto"),
-            vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.90),
+            vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.82),
             vllm_max_model_len=_env_int("AEROSPACE_VLLM_MAX_MODEL_LEN", 2048),
             vllm_cpu_offload_gb=_env_float("AEROSPACE_VLLM_CPU_OFFLOAD_GB", 0.0),
             vllm_trust_remote_code=_env_bool("AEROSPACE_VLLM_TRUST_REMOTE_CODE", False),

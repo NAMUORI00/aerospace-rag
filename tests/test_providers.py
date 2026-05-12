@@ -103,7 +103,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
         self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 0.0)
-        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.90)
+        self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.82)
         self.assertTrue(calls["kwargs"]["enforce_eager"])
 
     def test_vllm_engine_initialization_can_disable_quantized_loading(self) -> None:
@@ -152,6 +152,11 @@ class ProviderTests(unittest.TestCase):
         with patch.dict("sys.modules", {"vllm.envs": fake_envs}):
             with self.assertRaisesRegex(RuntimeError, "Restart the Python runtime"):
                 vllm_backend._configure_vllm_engine_mode(Settings(vllm_use_v1=True))
+
+    def test_vllm_engine_cache_is_process_global(self) -> None:
+        import builtins
+
+        self.assertIs(vllm_backend._ENGINE_CACHE, getattr(builtins, "_aerospace_rag_vllm_engine_cache"))
 
 
 if __name__ == "__main__":

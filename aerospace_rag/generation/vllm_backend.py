@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import builtins
 import os
 import sys
 from collections.abc import Iterator
@@ -9,7 +10,11 @@ from typing import Any
 from ..config import Settings
 
 
-_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool, bool], Any] = {}
+_PROCESS_CACHE_NAME = "_aerospace_rag_vllm_engine_cache"
+_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool, bool], Any] = getattr(
+    builtins, _PROCESS_CACHE_NAME, {}
+)
+setattr(builtins, _PROCESS_CACHE_NAME, _ENGINE_CACHE)
 
 
 def resolve_llm_model(model: str | None) -> str:
