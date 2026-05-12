@@ -153,13 +153,9 @@ def _sampling_params(*, max_tokens: int, json_schema: dict[str, Any] | None = No
         "temperature": 0.0,
         "max_tokens": max(1, int(max_tokens)),
     }
-    if json_schema is not None:
-        try:
-            from vllm.sampling_params import GuidedDecodingParams
-
-            kwargs["guided_decoding"] = GuidedDecodingParams(json=json_schema)
-        except ImportError:
-            pass
+    # Colab T4 + vLLM can terminate the engine process when guided decoding
+    # pulls in optional structured-output backends. Keep generation plain and
+    # let the caller's JSON parser/repair path validate schema-shaped outputs.
     return SamplingParams(**kwargs)
 
 
@@ -193,13 +189,7 @@ def generate_vllm_chat(
     engine = _load_vllm_engine(settings)
     sampling_params = _sampling_params(max_tokens=max_tokens, json_schema=json_schema)
     try:
-        try:
-            outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
-        except ImportError:
-            if json_schema is None:
-                raise
-            sampling_params = _sampling_params(max_tokens=max_tokens)
-            outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
+        outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
     except Exception:
         outputs = engine.generate([_messages_to_prompt(messages)], sampling_params=sampling_params, use_tqdm=False)
     answer = _first_text(outputs)
