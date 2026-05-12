@@ -149,19 +149,29 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("display(HTML(KNOWLEDGE_GRAPH_HTML))", code_source)
         self.assertIn("format_storage_visualization", code_source)
 
-    def test_notebook_persists_reference_colab_outputs(self) -> None:
+    def test_transformers_runtime_section_matches_default_provider(self) -> None:
+        nb = nbformat.read(NOTEBOOK, as_version=4)
+        section = next(
+            cell.source
+            for cell in nb.cells
+            if cell.cell_type == "markdown"
+            and cell.source.strip().startswith("## 5. Transformers 런타임과 모델 준비")
+        )
+
+        self.assertIn("Transformers", section)
+        self.assertIn("google/gemma-4-E4B-it", section)
+        self.assertIn("4-bit", section)
+        self.assertNotIn("Ollama 런타임", section)
+        self.assertNotIn("strict Ollama graph extraction", section)
+
+    def test_notebook_is_clean_for_fresh_colab_execution(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)
         code_cells = [cell for cell in nb.cells if cell.cell_type == "code"]
         output_cells = [cell for cell in code_cells if cell.get("outputs")]
-        storage_viz_cells = [
-            cell
-            for cell in code_cells
-            if "format_storage_visualization" in cell.source
-        ]
 
-        self.assertGreaterEqual(len(output_cells), 10)
-        self.assertEqual(len(storage_viz_cells), 1)
-        self.assertTrue(storage_viz_cells[0].get("outputs"))
+        self.assertEqual(output_cells, [])
+        for cell in code_cells:
+            self.assertIsNone(cell.get("execution_count"))
 
 
 if __name__ == "__main__":
