@@ -214,8 +214,23 @@ class RetrievalTests(unittest.TestCase):
                     settings=Settings(
                         extractor_backend="vllm",
                         knowledge_extract_retries=0,
+                        vllm_fallback_on_error=False,
                     )
                 ).extract(chunk)
+
+    def test_vllm_extractor_falls_back_to_local_debug_after_generation_failure(self) -> None:
+        chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+
+        with patch.object(extraction_module, "generate_vllm_chat", side_effect=TimeoutError("timed out")):
+            result = KnowledgeExtractor(
+                settings=Settings(
+                    extractor_backend="vllm",
+                    knowledge_extract_retries=0,
+                    vllm_fallback_on_error=True,
+                )
+            ).extract(chunk)
+
+        self.assertIn("NASA", [entity.text for entity in result.entities])
 
     def test_vllm_extractor_uses_configured_model_and_limits(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")

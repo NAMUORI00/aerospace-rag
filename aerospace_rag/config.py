@@ -55,6 +55,7 @@ class Settings:
     vllm_trust_remote_code: bool = False
     vllm_enforce_eager: bool = True
     vllm_use_v1: bool = False
+    vllm_fallback_on_error: bool = True
     llm_answer_max_tokens: int = 128
     llm_extract_max_tokens: int = 128
     extractor_backend: str = "vllm"
@@ -92,6 +93,7 @@ class Settings:
             vllm_trust_remote_code=_env_bool("AEROSPACE_VLLM_TRUST_REMOTE_CODE", False),
             vllm_enforce_eager=_env_bool("AEROSPACE_VLLM_ENFORCE_EAGER", True),
             vllm_use_v1=_env_bool("AEROSPACE_VLLM_USE_V1", False),
+            vllm_fallback_on_error=_env_bool("AEROSPACE_VLLM_FALLBACK_ON_ERROR", True),
             llm_answer_max_tokens=_env_int("LLM_ANSWER_MAX_TOKENS", 128),
             llm_extract_max_tokens=_env_int("LLM_EXTRACT_MAX_TOKENS", 128),
             extractor_backend=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_BACKEND", "vllm")),

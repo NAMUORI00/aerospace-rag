@@ -65,6 +65,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("VLLM_CPU_OFFLOAD_GB = 0.0", code_source)
         self.assertIn("VLLM_ENFORCE_EAGER = True", code_source)
         self.assertIn("VLLM_USE_V1 = False", code_source)
+        self.assertIn("VLLM_FALLBACK_ON_ERROR = True", code_source)
         self.assertIn("LLM_ANSWER_MAX_TOKENS = 128", code_source)
         self.assertIn("LLM_EXTRACT_MAX_TOKENS = 128", code_source)
         self.assertIn("KNOWLEDGE_EXTRACT_RETRIES = 1", code_source)
@@ -77,6 +78,10 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn('os.environ["AEROSPACE_VLLM_CPU_OFFLOAD_GB"] = str(VLLM_CPU_OFFLOAD_GB)', code_source)
         self.assertIn('os.environ["AEROSPACE_VLLM_ENFORCE_EAGER"] = str(VLLM_ENFORCE_EAGER).lower()', code_source)
         self.assertIn('os.environ["AEROSPACE_VLLM_USE_V1"] = str(VLLM_USE_V1).lower()', code_source)
+        self.assertIn(
+            'os.environ["AEROSPACE_VLLM_FALLBACK_ON_ERROR"] = str(VLLM_FALLBACK_ON_ERROR).lower()',
+            code_source,
+        )
         self.assertIn('os.environ["VLLM_USE_V1"] = "1" if VLLM_USE_V1 else "0"', code_source)
         self.assertIn("DEFAULT_VLLM_USE_V1 = False", code_source)
         self.assertIn('os.environ.setdefault("VLLM_USE_V1", "1" if DEFAULT_VLLM_USE_V1 else "0")', code_source)
@@ -184,6 +189,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("AEROSPACE_VLLM_CPU_OFFLOAD_GB = 0.0", section)
         self.assertIn("AEROSPACE_VLLM_ENFORCE_EAGER = True", section)
         self.assertIn("AEROSPACE_VLLM_USE_V1 = False", section)
+        self.assertIn("AEROSPACE_VLLM_FALLBACK_ON_ERROR = True", section)
 
     def test_notebook_is_clean_for_fresh_colab_execution(self) -> None:
         nb = nbformat.read(NOTEBOOK, as_version=4)

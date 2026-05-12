@@ -320,6 +320,8 @@ class KnowledgeExtractor:
                 return self._result_from_parsed(parsed, chunk)
             except Exception as exc:
                 last_error = exc
+        if self.settings.vllm_fallback_on_error:
+            return self._extract_local_debug(chunk)
         raise RuntimeError(
             "vLLM knowledge extraction failed. Check model loading, generation limits, "
             "or set EXTRACTOR_LLM_BACKEND='local_fallback' for no-LLM debugging."

@@ -78,6 +78,34 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("표 데이터:", user_prompt)
         self.assertIn("| EO/K3 | $2,048 | $4,096 |", user_prompt)
 
+    def test_vllm_provider_falls_back_to_extractive_answer_after_generation_failure(self) -> None:
+        chunk = Chunk("text#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        hit = RetrievalHit(chunk=chunk, score=1.0, channels={"bm25": 1.0})
+
+        with patch.object(provider_module, "generate_vllm_chat", side_effect=RuntimeError("EngineDead")):
+            answer = provider_module.generate_answer(
+                question="무슨 계약인가?",
+                hits=[hit],
+                provider="vllm",
+                settings=Settings(vllm_fallback_on_error=True),
+            )
+
+        self.assertIn("근거 기반 답변", answer)
+        self.assertIn("NASA awarded Momentus", answer)
+
+    def test_vllm_provider_can_disable_generation_fallback(self) -> None:
+        chunk = Chunk("text#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
+        hit = RetrievalHit(chunk=chunk, score=1.0, channels={"bm25": 1.0})
+
+        with patch.object(provider_module, "generate_vllm_chat", side_effect=RuntimeError("EngineDead")):
+            with self.assertRaisesRegex(RuntimeError, "EngineDead"):
+                provider_module.generate_answer(
+                    question="무슨 계약인가?",
+                    hits=[hit],
+                    provider="vllm",
+                    settings=Settings(vllm_fallback_on_error=False),
+                )
+
     def test_vllm_engine_initialization_uses_real_stdout_when_kernel_stdout_has_no_fileno(self) -> None:
         calls: dict[str, object] = {}
 

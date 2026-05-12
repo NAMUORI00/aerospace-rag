@@ -76,5 +76,10 @@ def generate_answer(
     resolved_settings = settings or Settings.from_env()
     provider = route_generation_provider(provider, settings=resolved_settings)
     if provider == "vllm":
-        return _vllm_answer(question, hits, resolved_settings)
+        try:
+            return _vllm_answer(question, hits, resolved_settings)
+        except Exception:
+            if not resolved_settings.vllm_fallback_on_error:
+                raise
+            return _extractive_answer(question, hits)
     return _extractive_answer(question, hits)
