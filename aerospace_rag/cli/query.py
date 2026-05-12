@@ -13,7 +13,7 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument(
         "--provider",
-        choices=["extractive", "transformers"],
+        choices=["extractive", "vllm"],
         default=None,
     )
     parser.add_argument("--debug", action="store_true")

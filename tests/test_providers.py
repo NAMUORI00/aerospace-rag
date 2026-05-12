@@ -29,7 +29,7 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("2단 엔진", answer)
         self.assertIn("251222_H3 8호기 발사 경과.pdf", answer)
 
-    def test_transformers_provider_uses_configured_gemma4_model_without_http_server(self) -> None:
+    def test_vllm_provider_uses_configured_gemma_model_without_http_server(self) -> None:
         chunk = Chunk(
             chunk_id="table#1",
             text=(
@@ -47,31 +47,30 @@ class ProviderTests(unittest.TestCase):
             messages: list[dict[str, str]],
             *,
             settings: Settings,
-            max_new_tokens: int,
-            max_time: int,
+            max_tokens: int,
+            json_schema: dict[str, object] | None = None,
         ) -> str:
             observed["messages"] = messages
-            observed["model"] = settings.transformers_model
-            observed["max_new_tokens"] = max_new_tokens
-            observed["max_time"] = max_time
-            return "transformers answer"
+            observed["model"] = settings.llm_model
+            observed["max_tokens"] = max_tokens
+            observed["json_schema"] = json_schema
+            return "vllm answer"
 
-        with patch.object(provider_module, "generate_transformers_chat", side_effect=fake_generate):
+        with patch.object(provider_module, "generate_vllm_chat", side_effect=fake_generate):
             answer = provider_module.generate_answer(
                 question="저장영상과 신규촬영 차이는?",
                 hits=[hit],
-                provider="transformers",
+                provider="vllm",
                 settings=Settings(
-                    transformers_model="google/gemma-4-E4B-it",
-                    transformers_answer_num_predict=321,
-                    transformers_generate_timeout_seconds=45,
+                    llm_model="google/gemma-4-E4B-it",
+                    llm_answer_max_tokens=321,
                 ),
             )
 
-        self.assertEqual(answer, "transformers answer")
+        self.assertEqual(answer, "vllm answer")
         self.assertEqual(observed["model"], "google/gemma-4-E4B-it")
-        self.assertEqual(observed["max_new_tokens"], 321)
-        self.assertEqual(observed["max_time"], 45)
+        self.assertEqual(observed["max_tokens"], 321)
+        self.assertIsNone(observed["json_schema"])
         user_prompt = str(observed["messages"][1]["content"])
         self.assertIn("표 데이터:", user_prompt)
         self.assertIn("| EO/K3 | $2,048 | $4,096 |", user_prompt)

@@ -8,7 +8,7 @@ from itertools import combinations
 from typing import Any
 
 from ..config import Settings
-from ..generation.transformers_backend import generate_transformers_chat
+from ..generation.vllm_backend import generate_vllm_chat
 from ..models import Chunk
 from ..text import tokenize, unique_ordered
 
@@ -271,20 +271,20 @@ def extract_entity_texts(chunk: Chunk) -> list[str]:
 
 
 class KnowledgeExtractor:
-    """Knowledge extractor with a Transformers model path and explicit local debug mode."""
+    """Knowledge extractor with a vLLM model path and explicit local debug mode."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings.from_env()
 
     def extract(self, chunk: Chunk) -> ExtractionResult:
-        provider = str(self.settings.extractor_backend or "transformers").strip().lower()
-        if provider == "transformers":
-            return self._extract_with_transformers(chunk)
+        provider = str(self.settings.extractor_backend or "vllm").strip().lower()
+        if provider == "vllm":
+            return self._extract_with_vllm(chunk)
         if provider in {"local", "local_fallback", "debug_local"}:
             return self._extract_local_debug(chunk)
-        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'transformers' or explicit debug mode 'local_fallback'.")
+        raise ValueError("EXTRACTOR_LLM_BACKEND must be 'vllm' or explicit debug mode 'local_fallback'.")
 
-    def _extract_with_transformers(self, chunk: Chunk) -> ExtractionResult:
+    def _extract_with_vllm(self, chunk: Chunk) -> ExtractionResult:
         max_chars = max(500, int(self.settings.knowledge_extract_max_chars or 1200))
         chunk_text = chunk.text[:max_chars]
         schema_text = json.dumps(EXTRACTION_JSON_SCHEMA, ensure_ascii=False, separators=(",", ":"))
@@ -304,28 +304,28 @@ class KnowledgeExtractor:
         last_error: Exception | None = None
         for _ in range(attempts):
             try:
-                content = generate_transformers_chat(
+                content = generate_vllm_chat(
                     [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt},
                     ],
                     settings=self.settings,
-                    max_new_tokens=max(128, int(self.settings.transformers_extract_num_predict or 768)),
-                    max_time=max(1, int(self.settings.transformers_extract_timeout_seconds or 120)),
+                    max_tokens=max(128, int(self.settings.llm_extract_max_tokens or 768)),
+                    json_schema=EXTRACTION_JSON_SCHEMA,
                 )
                 try:
                     parsed = parse_llm_json_object(content)
                 except Exception:
-                    parsed = self._repair_transformers_json(content, system_prompt=system_prompt)
+                    parsed = self._repair_vllm_json(content, system_prompt=system_prompt)
                 return self._result_from_parsed(parsed, chunk)
             except Exception as exc:
                 last_error = exc
         raise RuntimeError(
-            "Transformers knowledge extraction failed. Check model loading, generation limits, "
+            "vLLM knowledge extraction failed. Check model loading, generation limits, "
             "or set EXTRACTOR_LLM_BACKEND='local_fallback' for no-LLM debugging."
         ) from last_error
 
-    def _repair_transformers_json(self, content: str, *, system_prompt: str) -> dict[str, Any]:
+    def _repair_vllm_json(self, content: str, *, system_prompt: str) -> dict[str, Any]:
         repair_retries = max(0, int(self.settings.knowledge_extract_repair_retries or 0))
         if repair_retries == 0:
             return parse_llm_json_object(content)
@@ -338,19 +338,19 @@ class KnowledgeExtractor:
         )
         for _ in range(repair_retries):
             try:
-                repaired = generate_transformers_chat(
+                repaired = generate_vllm_chat(
                     [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": repair_prompt},
                     ],
                     settings=self.settings,
-                    max_new_tokens=max(128, int(self.settings.transformers_extract_num_predict or 768)),
-                    max_time=max(1, int(self.settings.transformers_extract_timeout_seconds or 120)),
+                    max_tokens=max(128, int(self.settings.llm_extract_max_tokens or 768)),
+                    json_schema=EXTRACTION_JSON_SCHEMA,
                 )
                 return parse_llm_json_object(repaired)
             except Exception as exc:
                 last_error = exc
-        raise RuntimeError("Transformers JSON repair failed.") from last_error
+        raise RuntimeError("vLLM JSON repair failed.") from last_error
 
     def _result_from_parsed(self, parsed: dict[str, Any], chunk: Chunk) -> ExtractionResult:
         entities = []

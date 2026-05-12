@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,18 +14,24 @@ from aerospace_rag.retrieval.weights import resolve_channel_weights
 
 
 class RuntimeContractTests(unittest.TestCase):
-    def test_settings_default_to_core_models_and_transformers_e4b(self) -> None:
+    def test_settings_default_to_vllm_gemma_e4b(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings.from_env()
 
-        self.assertEqual(settings.embed_model, "BAAI/bge-m3")
+        self.assertEqual(settings.embed_backend, "hash")
+        self.assertEqual(settings.embed_model, "hash")
+        self.assertEqual(settings.embed_dim, 384)
         self.assertEqual(settings.vector_backend, "qdrant")
-        self.assertEqual(settings.llm_provider, "transformers")
-        self.assertEqual(settings.transformers_model, "google/gemma-4-E4B-it")
+        self.assertEqual(settings.llm_provider, "vllm")
+        self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
+        self.assertEqual(settings.vllm_dtype, "auto")
+        self.assertEqual(settings.vllm_max_model_len, 4096)
+        self.assertEqual(settings.llm_answer_max_tokens, 1024)
+        self.assertEqual(settings.llm_extract_max_tokens, 768)
         self.assertEqual(settings.knowledge_extract_retries, 1)
         self.assertEqual(settings.knowledge_extract_repair_retries, 1)
         self.assertEqual(settings.knowledge_extract_max_chars, 1200)
-        self.assertEqual(settings.extractor_backend, "transformers")
+        self.assertEqual(settings.extractor_backend, "vllm")
         self.assertFalse(hasattr(settings, "extractor_fallback_on_error"))
         self.assertFalse(hasattr(settings, "runtime_profile_mode"))
 
@@ -37,13 +42,14 @@ class RuntimeContractTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "EXTRACTOR_LLM_BACKEND": "transformers",
-                "TRANSFORMERS_MODEL": "google/gemma-4-E4B-it",
-                "TRANSFORMERS_GENERATE_TIMEOUT_SECONDS": "45",
-                "TRANSFORMERS_EXTRACT_TIMEOUT_SECONDS": "33",
-                "TRANSFORMERS_ANSWER_NUM_PREDICT": "321",
-                "TRANSFORMERS_EXTRACT_NUM_PREDICT": "222",
-                "TRANSFORMERS_LOAD_IN_4BIT": "true",
+                "EXTRACTOR_LLM_BACKEND": "vllm",
+                "VLLM_MODEL": "google/gemma-4-E4B-it",
+                "VLLM_DTYPE": "float16",
+                "VLLM_GPU_MEMORY_UTILIZATION": "0.82",
+                "VLLM_MAX_MODEL_LEN": "2048",
+                "VLLM_TRUST_REMOTE_CODE": "true",
+                "LLM_ANSWER_MAX_TOKENS": "321",
+                "LLM_EXTRACT_MAX_TOKENS": "222",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
                 "KNOWLEDGE_EXTRACT_REPAIR_RETRIES": "3",
                 "KNOWLEDGE_EXTRACT_MAX_CHARS": "2500",
@@ -52,22 +58,18 @@ class RuntimeContractTests(unittest.TestCase):
         ):
             settings = Settings.from_env()
 
-        self.assertEqual(settings.llm_provider, "transformers")
-        self.assertEqual(settings.extractor_backend, "transformers")
-        self.assertEqual(settings.transformers_model, "google/gemma-4-E4B-it")
-        self.assertEqual(settings.transformers_generate_timeout_seconds, 45)
-        self.assertEqual(settings.transformers_extract_timeout_seconds, 33)
-        self.assertEqual(settings.transformers_answer_num_predict, 321)
-        self.assertEqual(settings.transformers_extract_num_predict, 222)
-        self.assertTrue(settings.transformers_load_in_4bit)
+        self.assertEqual(settings.llm_provider, "vllm")
+        self.assertEqual(settings.extractor_backend, "vllm")
+        self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
+        self.assertEqual(settings.vllm_dtype, "float16")
+        self.assertEqual(settings.vllm_gpu_memory_utilization, 0.82)
+        self.assertEqual(settings.vllm_max_model_len, 2048)
+        self.assertTrue(settings.vllm_trust_remote_code)
+        self.assertEqual(settings.llm_answer_max_tokens, 321)
+        self.assertEqual(settings.llm_extract_max_tokens, 222)
         self.assertEqual(settings.knowledge_extract_retries, 2)
         self.assertEqual(settings.knowledge_extract_repair_retries, 3)
         self.assertEqual(settings.knowledge_extract_max_chars, 2500)
-
-    def test_embedding_service_requires_sentence_transformers_by_default(self) -> None:
-        with patch.dict(sys.modules, {"sentence_transformers": None}):
-            with self.assertRaisesRegex(RuntimeError, "requirements-models.txt"):
-                EmbeddingService(Settings(embed_backend="sentence_transformers"))
 
     def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)

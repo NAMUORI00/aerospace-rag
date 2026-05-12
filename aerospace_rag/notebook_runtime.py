@@ -14,18 +14,14 @@ import sys
 from typing import Any, Iterable, Mapping, Sequence
 
 from .config import Settings
-from .generation.transformers_backend import ensure_transformers_model
+from .generation.vllm_backend import ensure_vllm_model
 from .ingestion import SUPPORTED_SUFFIXES, iter_supported_files
 from .models import QueryResponse, RetrievalHit, SourceRef
 
 
 REQUIRED_NOTEBOOK_PACKAGES = {
     "qdrant_client": "qdrant-client",
-    "sentence_transformers": "sentence-transformers",
-    "transformers": "transformers",
-    "torch": "torch",
-    "accelerate": "accelerate",
-    "bitsandbytes": "bitsandbytes",
+    "vllm": "vllm",
     "docling": "docling",
     "openpyxl": "openpyxl",
     "pypdf": "pypdf",
@@ -102,12 +98,12 @@ def ensure_model_runtime(llm_needed: bool) -> dict[str, object]:
     if not llm_needed:
         return {"ready": False, "reason": "LLM not requested"}
     try:
-        status = ensure_transformers_model(Settings.from_env())
+        status = ensure_vllm_model(Settings.from_env())
     except Exception as exc:
         print("Model runtime unavailable.")
         print("Reason:", exc)
         return {"ready": False, "reason": str(exc)}
-    print("Model runtime ready:", status["model"], "device_map:", status["device_map"])
+    print("Model runtime ready:", status["model"], "dtype:", status.get("dtype", "unknown"))
     return status
 
 

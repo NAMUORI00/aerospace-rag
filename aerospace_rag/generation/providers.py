@@ -3,7 +3,7 @@ from __future__ import annotations
 from ..config import Settings
 from ..models import RetrievalHit
 from ..text import excerpt
-from .transformers_backend import generate_transformers_chat
+from .vllm_backend import generate_vllm_chat
 
 
 def route_generation_provider(
@@ -11,10 +11,10 @@ def route_generation_provider(
     *,
     settings: Settings | None = None,
 ) -> str:
-    requested = str(provider or (settings.llm_provider if settings else "transformers") or "transformers").strip().lower()
-    if requested in {"extractive", "transformers"}:
+    requested = str(provider or (settings.llm_provider if settings else "vllm") or "vllm").strip().lower()
+    if requested in {"extractive", "vllm"}:
         return requested
-    raise ValueError("provider must be 'transformers' or explicit debug mode 'extractive'.")
+    raise ValueError("provider must be 'vllm' or explicit debug mode 'extractive'.")
 
 
 def _build_prompt(question: str, hits: list[RetrievalHit]) -> str:
@@ -54,16 +54,15 @@ def _extractive_answer(question: str, hits: list[RetrievalHit]) -> str:
     return "\n".join(lines)
 
 
-def _transformers_answer(question: str, hits: list[RetrievalHit], settings: Settings) -> str:
+def _vllm_answer(question: str, hits: list[RetrievalHit], settings: Settings) -> str:
     messages = [
         {"role": "system", "content": "다음 근거만 사용해 한국어로 간결하게 답하세요. 근거가 부족하면 부족하다고 말하세요."},
         {"role": "user", "content": _build_prompt(question, hits)},
     ]
-    return generate_transformers_chat(
+    return generate_vllm_chat(
         messages,
         settings=settings,
-        max_new_tokens=max(128, int(settings.transformers_answer_num_predict or 1024)),
-        max_time=max(1, int(settings.transformers_generate_timeout_seconds or 120)),
+        max_tokens=max(128, int(settings.llm_answer_max_tokens or 1024)),
     )
 
 
@@ -71,11 +70,11 @@ def generate_answer(
     question: str,
     hits: list[RetrievalHit],
     *,
-    provider: str = "transformers",
+    provider: str = "vllm",
     settings: Settings | None = None,
 ) -> str:
     resolved_settings = settings or Settings.from_env()
     provider = route_generation_provider(provider, settings=resolved_settings)
-    if provider == "transformers":
-        return _transformers_answer(question, hits, resolved_settings)
+    if provider == "vllm":
+        return _vllm_answer(question, hits, resolved_settings)
     return _extractive_answer(question, hits)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
-import types
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -25,12 +24,12 @@ class RetrievalTests(unittest.TestCase):
         EmbeddingService._MODEL_CACHE.clear()
 
     def test_generation_provider_rejects_non_core_provider_aliases(self) -> None:
-        settings = Settings(llm_provider="transformers")
+        settings = Settings(llm_provider="vllm")
 
-        self.assertEqual(route_generation_provider(None, settings=settings), "transformers")
+        self.assertEqual(route_generation_provider(None, settings=settings), "vllm")
         self.assertEqual(route_generation_provider("extractive", settings=settings), "extractive")
-        self.assertEqual(route_generation_provider("transformers", settings=settings), "transformers")
-        for provider in ["local", "openai_compatible", "vllm", "remote", "server_api"]:
+        self.assertEqual(route_generation_provider("vllm", settings=settings), "vllm")
+        for provider in ["local", "openai_compatible", "remote", "server_api"]:
             with self.assertRaisesRegex(ValueError, "provider"):
                 route_generation_provider(provider, settings=settings)
 
@@ -156,45 +155,14 @@ class RetrievalTests(unittest.TestCase):
 
         self.assertEqual(len(sparse["indices"]), len(set(sparse["indices"])))
 
-    def test_embedding_service_reuses_sentence_transformer_instance(self) -> None:
-        class FakeModel:
-            def get_embedding_dimension(self) -> int:
-                return 384
+    def test_embedding_service_uses_configured_hash_dimension(self) -> None:
+        service = EmbeddingService(Settings(embed_backend="hash", embed_dim=128))
 
-        fake_model = FakeModel()
-        calls: list[str] = []
+        vector = service.embed_text("NASA solar sail")
 
-        def fake_sentence_transformer(model_name: str) -> FakeModel:
-            calls.append(model_name)
-            return fake_model
-
-        fake_module = types.SimpleNamespace(SentenceTransformer=fake_sentence_transformer)
-        with patch.dict(sys.modules, {"sentence_transformers": fake_module}):
-            first = EmbeddingService(Settings(embed_model="BAAI/bge-m3"))
-            second = EmbeddingService(Settings(embed_model="BAAI/bge-m3"))
-
-        self.assertIs(first._model, second._model)
-        self.assertEqual(calls, ["BAAI/bge-m3"])
-
-    def test_embedding_service_prefers_new_dimension_api_without_deprecation_call(self) -> None:
-        class FakeModel:
-            def __init__(self) -> None:
-                self.deprecated_called = False
-
-            def get_embedding_dimension(self) -> int:
-                return 256
-
-            def get_sentence_embedding_dimension(self) -> int:
-                self.deprecated_called = True
-                raise AssertionError("deprecated dimension API should not be used")
-
-        fake_model = FakeModel()
-        fake_module = types.SimpleNamespace(SentenceTransformer=lambda _model_name: fake_model)
-        with patch.dict(sys.modules, {"sentence_transformers": fake_module}):
-            service = EmbeddingService(Settings(embed_model="custom-model"))
-
-        self.assertEqual(service.vector_size, 256)
-        self.assertFalse(fake_model.deprecated_called)
+        self.assertEqual(service.provider_name, "hash")
+        self.assertEqual(service.vector_size, 128)
+        self.assertEqual(len(vector), 128)
 
     def test_graph_store_uses_graph_lite_index_without_graph_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,7 +180,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertFalse(graph.db_path.exists())
         self.assertIn("public#1", {chunk_id for chunk_id, _ in hits})
 
-    def test_transformers_extractor_accepts_fenced_json_response(self) -> None:
+    def test_vllm_extractor_accepts_fenced_json_response(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
 
         content = """```json
@@ -227,29 +195,29 @@ class RetrievalTests(unittest.TestCase):
 }
 ```"""
 
-        with patch.object(extraction_module, "generate_transformers_chat", return_value=content):
+        with patch.object(extraction_module, "generate_vllm_chat", return_value=content):
             result = KnowledgeExtractor(
                 settings=Settings(
-                    extractor_backend="transformers",
+                    extractor_backend="vllm",
                 )
             ).extract(chunk)
 
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
         self.assertEqual(result.relations[0].type, "AWARDED_CONTRACT_TO")
 
-    def test_transformers_extractor_raises_after_generation_failure(self) -> None:
+    def test_vllm_extractor_raises_after_generation_failure(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
 
-        with patch.object(extraction_module, "generate_transformers_chat", side_effect=TimeoutError("timed out")):
-            with self.assertRaisesRegex(RuntimeError, "Transformers knowledge extraction failed"):
+        with patch.object(extraction_module, "generate_vllm_chat", side_effect=TimeoutError("timed out")):
+            with self.assertRaisesRegex(RuntimeError, "vLLM knowledge extraction failed"):
                 KnowledgeExtractor(
                     settings=Settings(
-                        extractor_backend="transformers",
+                        extractor_backend="vllm",
                         knowledge_extract_retries=0,
                     )
                 ).extract(chunk)
 
-    def test_transformers_extractor_uses_configured_model_and_limits(self) -> None:
+    def test_vllm_extractor_uses_configured_model_and_limits(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
         observed: dict[str, object] = {}
 
@@ -257,13 +225,13 @@ class RetrievalTests(unittest.TestCase):
             messages: list[dict[str, str]],
             *,
             settings: Settings,
-            max_new_tokens: int,
-            max_time: int,
+            max_tokens: int,
+            json_schema: dict[str, object] | None = None,
         ) -> str:
             observed["messages"] = messages
-            observed["model"] = settings.transformers_model
-            observed["max_new_tokens"] = max_new_tokens
-            observed["max_time"] = max_time
+            observed["model"] = settings.llm_model
+            observed["max_tokens"] = max_tokens
+            observed["json_schema"] = json_schema
             return json.dumps(
                 {
                     "entities": [{"canonical_id": "NASA", "text": "NASA", "type": "Agency"}],
@@ -271,23 +239,22 @@ class RetrievalTests(unittest.TestCase):
                 }
             )
 
-        with patch.object(extraction_module, "generate_transformers_chat", side_effect=fake_generate):
+        with patch.object(extraction_module, "generate_vllm_chat", side_effect=fake_generate):
             result = extraction_module.KnowledgeExtractor(
                 settings=Settings(
-                    extractor_backend="transformers",
-                    transformers_model="google/gemma-4-E4B-it",
-                    transformers_extract_num_predict=222,
-                    transformers_extract_timeout_seconds=33,
+                    extractor_backend="vllm",
+                    llm_model="google/gemma-4-E4B-it",
+                    llm_extract_max_tokens=222,
                 )
             ).extract(chunk)
 
         self.assertEqual([entity.text for entity in result.entities], ["NASA"])
         self.assertEqual(observed["model"], "google/gemma-4-E4B-it")
-        self.assertEqual(observed["max_new_tokens"], 222)
-        self.assertEqual(observed["max_time"], 33)
+        self.assertEqual(observed["max_tokens"], 222)
+        self.assertIsNotNone(observed["json_schema"])
         self.assertIn("JSON Schema", observed["messages"][0]["content"])
 
-    def test_transformers_extractor_accepts_json_with_trailing_model_text(self) -> None:
+    def test_vllm_extractor_accepts_json_with_trailing_model_text(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
         first_json = json.dumps(
             {
@@ -309,11 +276,11 @@ class RetrievalTests(unittest.TestCase):
 
         with patch.object(
             extraction_module,
-            "generate_transformers_chat",
+            "generate_vllm_chat",
             return_value=first_json + "\n" + json.dumps({"note": "extra object"}),
         ):
             result = extraction_module.KnowledgeExtractor(
-                settings=Settings(extractor_backend="transformers")
+                settings=Settings(extractor_backend="vllm")
             ).extract(chunk)
 
         self.assertEqual([entity.text for entity in result.entities], ["NASA", "Momentus"])
@@ -328,7 +295,7 @@ class RetrievalTests(unittest.TestCase):
 
         self.assertEqual([item["text"] for item in parsed["entities"]], ["NASA", "Momentus"])
 
-    def test_transformers_extractor_repairs_malformed_json_with_same_model(self) -> None:
+    def test_vllm_extractor_repairs_malformed_json_with_same_model(self) -> None:
         chunk = Chunk("extract#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
         malformed = '{"entities":[{"canonical_id":"NASA","text":"NASA","type":"Agency","confidence":}], "relations":[]}'
         repaired = json.dumps(
@@ -349,10 +316,10 @@ class RetrievalTests(unittest.TestCase):
             }
         )
 
-        with patch.object(extraction_module, "generate_transformers_chat", side_effect=[malformed, repaired]) as generate:
+        with patch.object(extraction_module, "generate_vllm_chat", side_effect=[malformed, repaired]) as generate:
             result = extraction_module.KnowledgeExtractor(
                 settings=Settings(
-                    extractor_backend="transformers",
+                    extractor_backend="vllm",
                     knowledge_extract_retries=0,
                     knowledge_extract_repair_retries=1,
                 )

@@ -96,7 +96,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                     channels={"qdrant": 0.3},
                 )
             ],
-            routing={"provider": "transformers"},
+            routing={"provider": "vllm"},
             diagnostics={"channels": ["bm25", "qdrant"]},
         )
 
@@ -117,7 +117,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                 SourceRef("doc#2", "alpha.pdf", "text", 0.6, "B"),
                 SourceRef("doc#3", "beta.pdf", "text", 0.5, "C"),
             ],
-            routing={"provider": "transformers"},
+            routing={"provider": "vllm"},
             diagnostics={"channels": ["bm25", "graph"]},
         )
 
@@ -125,7 +125,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         table = notebook_runtime.format_results_table([row], columns=["case", "question", "summary", "top_source", "source_files"])
 
         self.assertEqual(row["case"], 2)
-        self.assertEqual(row["provider"], "transformers")
+        self.assertEqual(row["provider"], "vllm")
         self.assertEqual(row["top_source"], "alpha.pdf")
         self.assertEqual(row["source_files"], "alpha.pdf, beta.pdf")
         self.assertIn("첫 문장입니다.", row["summary"])
@@ -168,7 +168,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         response = QueryResponse(
             answer="가격 차이는 다음과 같습니다:\n\n- **저장영상(AO)**: 기존 보유 영상 기준 가격\n- 신규촬영(NTO): 신규 촬영 요청 기준 가격",
             sources=[SourceRef("doc#1", "alpha.pdf", "text", 0.7, "A")],
-            routing={"provider": "transformers"},
+            routing={"provider": "vllm"},
             diagnostics={"channels": ["bm25"]},
         )
 
@@ -190,18 +190,18 @@ class NotebookRuntimeTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "LLM_PROVIDER": "transformers",
-                "TRANSFORMERS_MODEL": "google/gemma-4-E4B-it",
-                "TRANSFORMERS_LOAD_IN_4BIT": "true",
+                "LLM_PROVIDER": "vllm",
+                "VLLM_MODEL": "google/gemma-4-E4B-it",
+                "VLLM_DTYPE": "float16",
             },
             clear=True,
-        ), patch.object(notebook_runtime, "ensure_transformers_model", side_effect=fake_ensure):
+        ), patch.object(notebook_runtime, "ensure_vllm_model", side_effect=fake_ensure):
             status = notebook_runtime.ensure_model_runtime(True)
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["model"], "google/gemma-4-E4B-it")
-        self.assertEqual(observed["settings"].transformers_model, "google/gemma-4-E4B-it")
-        self.assertTrue(observed["settings"].transformers_load_in_4bit)
+        self.assertEqual(observed["settings"].llm_model, "google/gemma-4-E4B-it")
+        self.assertEqual(observed["settings"].vllm_dtype, "float16")
 
 
 if __name__ == "__main__":
