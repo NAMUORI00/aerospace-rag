@@ -9,7 +9,7 @@ from typing import Any
 from ..config import Settings
 
 
-_ENGINE_CACHE: dict[tuple[str, str, float, int, bool], Any] = {}
+_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, bool], Any] = {}
 
 
 def resolve_llm_model(model: str | None) -> str:
@@ -17,10 +17,12 @@ def resolve_llm_model(model: str | None) -> str:
     return requested or "google/gemma-4-E4B-it"
 
 
-def _engine_cache_key(settings: Settings) -> tuple[str, str, float, int, bool]:
+def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, bool]:
     return (
         resolve_llm_model(settings.llm_model),
         str(settings.vllm_dtype or "auto"),
+        str(settings.vllm_quantization or ""),
+        str(settings.vllm_load_format or "auto"),
         float(settings.vllm_gpu_memory_utilization or 0.90),
         int(settings.vllm_max_model_len or 4096),
         bool(settings.vllm_trust_remote_code),
@@ -83,15 +85,19 @@ def _load_vllm_engine(settings: Settings) -> Any:
             "`pip install -r requirements-models.txt`."
         ) from exc
 
-    model_id, dtype, gpu_memory_utilization, max_model_len, trust_remote_code = key
+    model_id, dtype, quantization, load_format, gpu_memory_utilization, max_model_len, trust_remote_code = key
+    llm_kwargs: dict[str, Any] = {
+        "model": model_id,
+        "dtype": dtype,
+        "load_format": load_format,
+        "gpu_memory_utilization": gpu_memory_utilization,
+        "max_model_len": max_model_len,
+        "trust_remote_code": trust_remote_code,
+    }
+    if quantization:
+        llm_kwargs["quantization"] = quantization
     with _vllm_initialization_stdio():
-        engine = LLM(
-            model=model_id,
-            dtype=dtype,
-            gpu_memory_utilization=gpu_memory_utilization,
-            max_model_len=max_model_len,
-            trust_remote_code=trust_remote_code,
-        )
+        engine = LLM(**llm_kwargs)
     _ENGINE_CACHE[key] = engine
     return engine
 
@@ -102,6 +108,8 @@ def ensure_vllm_model(settings: Settings) -> dict[str, object]:
         "ready": True,
         "model": resolve_llm_model(settings.llm_model),
         "dtype": settings.vllm_dtype,
+        "quantization": settings.vllm_quantization,
+        "load_format": settings.vllm_load_format,
         "max_model_len": settings.vllm_max_model_len,
     }
 

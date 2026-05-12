@@ -47,6 +47,8 @@ class Settings:
     knowledge_extract_max_chars: int = 1200
     llm_model: str = "google/gemma-4-E4B-it"
     vllm_dtype: str = "auto"
+    vllm_quantization: str = "bitsandbytes"
+    vllm_load_format: str = "bitsandbytes"
     vllm_gpu_memory_utilization: float = 0.90
     vllm_max_model_len: int = 4096
     vllm_trust_remote_code: bool = False
@@ -77,6 +79,8 @@ class Settings:
             knowledge_extract_max_chars=_env_int("KNOWLEDGE_EXTRACT_MAX_CHARS", 1200),
             llm_model=os.environ.get("AEROSPACE_LLM_MODEL", os.environ.get("LLM_MODEL", "google/gemma-4-E4B-it")),
             vllm_dtype=os.environ.get("AEROSPACE_VLLM_DTYPE", "auto"),
+            vllm_quantization=os.environ.get("AEROSPACE_VLLM_QUANTIZATION", "bitsandbytes"),
+            vllm_load_format=os.environ.get("AEROSPACE_VLLM_LOAD_FORMAT", "bitsandbytes"),
             vllm_gpu_memory_utilization=_env_float("AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION", 0.90),
             vllm_max_model_len=_env_int("AEROSPACE_VLLM_MAX_MODEL_LEN", 4096),
             vllm_trust_remote_code=_env_bool("AEROSPACE_VLLM_TRUST_REMOTE_CODE", False),

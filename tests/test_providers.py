@@ -97,6 +97,27 @@ class ProviderTests(unittest.TestCase):
 
         self.assertTrue(calls["stdout_is_real"])
         self.assertEqual(calls["kwargs"]["model"], "google/gemma-4-E4B-it")
+        self.assertEqual(calls["kwargs"]["quantization"], "bitsandbytes")
+        self.assertEqual(calls["kwargs"]["load_format"], "bitsandbytes")
+
+    def test_vllm_engine_initialization_can_disable_quantized_loading(self) -> None:
+        calls: dict[str, object] = {}
+
+        class FakeLLM:
+            def __init__(self, **kwargs: object) -> None:
+                calls["kwargs"] = kwargs
+
+        with patch.dict("sys.modules", {"vllm": type("FakeVllm", (), {"LLM": FakeLLM})}):
+            vllm_backend._ENGINE_CACHE.clear()
+            vllm_backend._load_vllm_engine(
+                Settings(
+                    vllm_quantization="",
+                    vllm_load_format="auto",
+                )
+            )
+
+        self.assertNotIn("quantization", calls["kwargs"])
+        self.assertEqual(calls["kwargs"]["load_format"], "auto")
 
 
 if __name__ == "__main__":

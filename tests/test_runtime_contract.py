@@ -25,6 +25,8 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.llm_provider, "vllm")
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "auto")
+        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
+        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
         self.assertEqual(settings.vllm_max_model_len, 4096)
         self.assertEqual(settings.llm_answer_max_tokens, 1024)
         self.assertEqual(settings.llm_extract_max_tokens, 768)
@@ -45,6 +47,8 @@ class RuntimeContractTests(unittest.TestCase):
                 "EXTRACTOR_LLM_BACKEND": "vllm",
                 "AEROSPACE_LLM_MODEL": "google/gemma-4-E4B-it",
                 "AEROSPACE_VLLM_DTYPE": "float16",
+                "AEROSPACE_VLLM_QUANTIZATION": "bitsandbytes",
+                "AEROSPACE_VLLM_LOAD_FORMAT": "bitsandbytes",
                 "AEROSPACE_VLLM_GPU_MEMORY_UTILIZATION": "0.82",
                 "AEROSPACE_VLLM_MAX_MODEL_LEN": "2048",
                 "AEROSPACE_VLLM_TRUST_REMOTE_CODE": "true",
@@ -62,6 +66,8 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.extractor_backend, "vllm")
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "float16")
+        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
+        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
         self.assertEqual(settings.vllm_gpu_memory_utilization, 0.82)
         self.assertEqual(settings.vllm_max_model_len, 2048)
         self.assertTrue(settings.vllm_trust_remote_code)
@@ -87,6 +93,8 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(settings.llm_model, "google/gemma-4-E4B-it")
         self.assertEqual(settings.vllm_dtype, "auto")
+        self.assertEqual(settings.vllm_quantization, "bitsandbytes")
+        self.assertEqual(settings.vllm_load_format, "bitsandbytes")
         self.assertEqual(settings.vllm_gpu_memory_utilization, 0.90)
         self.assertEqual(settings.vllm_max_model_len, 4096)
         self.assertFalse(settings.vllm_trust_remote_code)
