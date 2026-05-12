@@ -9,7 +9,7 @@ from typing import Any
 from ..config import Settings
 
 
-_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool], Any] = {}
+_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool, bool], Any] = {}
 
 
 def resolve_llm_model(model: str | None) -> str:
@@ -17,7 +17,7 @@ def resolve_llm_model(model: str | None) -> str:
     return requested or "google/gemma-4-E4B-it"
 
 
-def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, float, bool, bool]:
+def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, float, bool, bool, bool]:
     return (
         resolve_llm_model(settings.llm_model),
         str(settings.vllm_dtype or "auto"),
@@ -28,6 +28,7 @@ def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, in
         float(settings.vllm_cpu_offload_gb or 0.0),
         bool(settings.vllm_trust_remote_code),
         bool(settings.vllm_enforce_eager),
+        bool(settings.vllm_use_v1),
     )
 
 
@@ -79,6 +80,8 @@ def _load_vllm_engine(settings: Settings) -> Any:
     if key in _ENGINE_CACHE:
         return _ENGINE_CACHE[key]
 
+    if not settings.vllm_use_v1:
+        os.environ.setdefault("VLLM_USE_V1", "0")
     try:
         from vllm import LLM
     except Exception as exc:
@@ -87,7 +90,7 @@ def _load_vllm_engine(settings: Settings) -> Any:
             "`pip install -r requirements-models.txt`."
         ) from exc
 
-    model_id, dtype, quantization, load_format, gpu_memory_utilization, max_model_len, cpu_offload_gb, trust_remote_code, enforce_eager = key
+    model_id, dtype, quantization, load_format, gpu_memory_utilization, max_model_len, cpu_offload_gb, trust_remote_code, enforce_eager, _use_v1 = key
     llm_kwargs: dict[str, Any] = {
         "model": model_id,
         "dtype": dtype,
@@ -117,6 +120,7 @@ def ensure_vllm_model(settings: Settings) -> dict[str, object]:
         "max_model_len": settings.vllm_max_model_len,
         "cpu_offload_gb": settings.vllm_cpu_offload_gb,
         "enforce_eager": settings.vllm_enforce_eager,
+        "use_v1": settings.vllm_use_v1,
     }
 
 

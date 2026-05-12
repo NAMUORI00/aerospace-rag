@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -91,16 +92,17 @@ class ProviderTests(unittest.TestCase):
                 calls["stdout_is_real"] = sys.stdout is sys.__stdout__
 
         with patch.dict("sys.modules", {"vllm": type("FakeVllm", (), {"LLM": FakeLLM})}):
-            with patch("sys.stdout", FakeStdout()):
+            with patch.dict(os.environ, {}, clear=True), patch("sys.stdout", FakeStdout()):
                 vllm_backend._ENGINE_CACHE.clear()
                 vllm_backend._load_vllm_engine(Settings())
+                self.assertEqual(os.environ.get("VLLM_USE_V1"), "0")
 
         self.assertTrue(calls["stdout_is_real"])
         self.assertEqual(calls["kwargs"]["model"], "google/gemma-4-E4B-it")
         self.assertNotIn("quantization", calls["kwargs"])
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
-        self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 4.0)
+        self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 1.0)
         self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.82)
         self.assertTrue(calls["kwargs"]["enforce_eager"])
 
