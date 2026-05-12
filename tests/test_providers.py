@@ -183,9 +183,13 @@ class ProviderTests(unittest.TestCase):
                 params.append(kwargs)
 
         class FakeEngine:
-            def chat(self, messages: list[list[dict[str, str]]], *, sampling_params: object, use_tqdm: bool) -> list[object]:
+            def generate(self, prompts: list[str], *, sampling_params: object, use_tqdm: bool) -> list[object]:
+                self.prompts = prompts
                 output = type("FakeCompletion", (), {"text": "ok"})()
                 return [type("FakeRequestOutput", (), {"outputs": [output]})()]
+
+            def chat(self, messages: list[list[dict[str, str]]], *, sampling_params: object, use_tqdm: bool) -> list[object]:
+                raise AssertionError("generate should be used before chat")
 
         fake_vllm = types.ModuleType("vllm")
         fake_vllm.SamplingParams = FakeSamplingParams  # type: ignore[attr-defined]

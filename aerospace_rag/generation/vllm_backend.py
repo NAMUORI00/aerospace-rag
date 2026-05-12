@@ -189,9 +189,9 @@ def generate_vllm_chat(
     engine = _load_vllm_engine(settings)
     sampling_params = _sampling_params(max_tokens=max_tokens, json_schema=json_schema)
     try:
-        outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
-    except Exception:
         outputs = engine.generate([_messages_to_prompt(messages)], sampling_params=sampling_params, use_tqdm=False)
+    except Exception:
+        outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
     answer = _first_text(outputs)
     if not answer:
         raise RuntimeError("vLLM model returned an empty response.")
