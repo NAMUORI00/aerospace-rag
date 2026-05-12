@@ -31,7 +31,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.vllm_max_model_len, 1024)
         self.assertEqual(settings.vllm_cpu_offload_gb, 0.0)
         self.assertTrue(settings.vllm_enforce_eager)
-        self.assertTrue(settings.vllm_use_v1)
+        self.assertFalse(settings.vllm_use_v1)
         self.assertEqual(settings.llm_answer_max_tokens, 128)
         self.assertEqual(settings.llm_extract_max_tokens, 128)
         self.assertEqual(settings.knowledge_extract_retries, 1)
@@ -58,7 +58,7 @@ class RuntimeContractTests(unittest.TestCase):
                 "AEROSPACE_VLLM_CPU_OFFLOAD_GB": "6.5",
                 "AEROSPACE_VLLM_TRUST_REMOTE_CODE": "true",
                 "AEROSPACE_VLLM_ENFORCE_EAGER": "false",
-                "AEROSPACE_VLLM_USE_V1": "true",
+                "AEROSPACE_VLLM_USE_V1": "false",
                 "LLM_ANSWER_MAX_TOKENS": "321",
                 "LLM_EXTRACT_MAX_TOKENS": "222",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
@@ -80,7 +80,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.vllm_cpu_offload_gb, 6.5)
         self.assertTrue(settings.vllm_trust_remote_code)
         self.assertFalse(settings.vllm_enforce_eager)
-        self.assertTrue(settings.vllm_use_v1)
+        self.assertFalse(settings.vllm_use_v1)
         self.assertEqual(settings.llm_answer_max_tokens, 321)
         self.assertEqual(settings.llm_extract_max_tokens, 222)
         self.assertEqual(settings.knowledge_extract_retries, 2)
@@ -110,7 +110,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.vllm_cpu_offload_gb, 0.0)
         self.assertFalse(settings.vllm_trust_remote_code)
         self.assertTrue(settings.vllm_enforce_eager)
-        self.assertTrue(settings.vllm_use_v1)
+        self.assertFalse(settings.vllm_use_v1)
 
     def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)

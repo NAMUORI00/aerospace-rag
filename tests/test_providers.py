@@ -96,7 +96,7 @@ class ProviderTests(unittest.TestCase):
             with patch.dict(os.environ, {}, clear=True), patch("sys.stdout", FakeStdout()):
                 vllm_backend._ENGINE_CACHE.clear()
                 vllm_backend._load_vllm_engine(Settings())
-                self.assertEqual(os.environ.get("VLLM_USE_V1"), "1")
+                self.assertEqual(os.environ.get("VLLM_USE_V1"), "0")
 
         self.assertTrue(calls["stdout_is_real"])
         self.assertEqual(calls["kwargs"]["model"], "ciocan/gemma-4-E4B-it-W4A16")
