@@ -195,6 +195,7 @@ class NotebookRuntimeTests(unittest.TestCase):
                 "AEROSPACE_VLLM_DTYPE": "float16",
                 "AEROSPACE_VLLM_QUANTIZATION": "",
                 "AEROSPACE_VLLM_LOAD_FORMAT": "auto",
+                "AEROSPACE_VLLM_CPU_OFFLOAD_GB": "4.0",
                 "AEROSPACE_VLLM_ENFORCE_EAGER": "true",
             },
             clear=True,
@@ -207,6 +208,7 @@ class NotebookRuntimeTests(unittest.TestCase):
         self.assertEqual(observed["settings"].vllm_dtype, "float16")
         self.assertEqual(observed["settings"].vllm_quantization, "")
         self.assertEqual(observed["settings"].vllm_load_format, "auto")
+        self.assertEqual(observed["settings"].vllm_cpu_offload_gb, 4.0)
         self.assertTrue(observed["settings"].vllm_enforce_eager)
 
 

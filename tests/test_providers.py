@@ -100,6 +100,7 @@ class ProviderTests(unittest.TestCase):
         self.assertNotIn("quantization", calls["kwargs"])
         self.assertEqual(calls["kwargs"]["load_format"], "auto")
         self.assertEqual(calls["kwargs"]["max_model_len"], 2048)
+        self.assertEqual(calls["kwargs"]["cpu_offload_gb"], 4.0)
         self.assertEqual(calls["kwargs"]["gpu_memory_utilization"], 0.82)
         self.assertTrue(calls["kwargs"]["enforce_eager"])
 

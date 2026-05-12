@@ -59,6 +59,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn('VLLM_LOAD_FORMAT = "auto"', code_source)
         self.assertIn("VLLM_GPU_MEMORY_UTILIZATION = 0.82", code_source)
         self.assertIn("VLLM_MAX_MODEL_LEN = 2048", code_source)
+        self.assertIn("VLLM_CPU_OFFLOAD_GB = 4.0", code_source)
         self.assertIn("VLLM_ENFORCE_EAGER = True", code_source)
         self.assertIn("LLM_ANSWER_MAX_TOKENS = 1024", code_source)
         self.assertIn("LLM_EXTRACT_MAX_TOKENS = 768", code_source)
@@ -69,6 +70,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn('os.environ["AEROSPACE_VLLM_DTYPE"] = VLLM_DTYPE', code_source)
         self.assertIn('os.environ["AEROSPACE_VLLM_QUANTIZATION"] = VLLM_QUANTIZATION', code_source)
         self.assertIn('os.environ["AEROSPACE_VLLM_LOAD_FORMAT"] = VLLM_LOAD_FORMAT', code_source)
+        self.assertIn('os.environ["AEROSPACE_VLLM_CPU_OFFLOAD_GB"] = str(VLLM_CPU_OFFLOAD_GB)', code_source)
         self.assertIn('os.environ["AEROSPACE_VLLM_ENFORCE_EAGER"] = str(VLLM_ENFORCE_EAGER).lower()', code_source)
         self.assertIn("legacy_name", code_source)
         self.assertIn('os.environ.pop(legacy_name, None)', code_source)
@@ -171,6 +173,7 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("google/gemma-4-E4B-it", section)
         self.assertNotIn("bits" + "andbytes", section)
         self.assertIn("AEROSPACE_VLLM_MAX_MODEL_LEN = 2048", section)
+        self.assertIn("AEROSPACE_VLLM_CPU_OFFLOAD_GB = 4.0", section)
         self.assertIn("AEROSPACE_VLLM_ENFORCE_EAGER = True", section)
 
     def test_notebook_is_clean_for_fresh_colab_execution(self) -> None:

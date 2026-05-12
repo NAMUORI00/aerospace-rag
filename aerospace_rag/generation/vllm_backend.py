@@ -9,7 +9,7 @@ from typing import Any
 from ..config import Settings
 
 
-_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, bool, bool], Any] = {}
+_ENGINE_CACHE: dict[tuple[str, str, str, str, float, int, float, bool, bool], Any] = {}
 
 
 def resolve_llm_model(model: str | None) -> str:
@@ -17,7 +17,7 @@ def resolve_llm_model(model: str | None) -> str:
     return requested or "google/gemma-4-E4B-it"
 
 
-def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, bool, bool]:
+def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, int, float, bool, bool]:
     return (
         resolve_llm_model(settings.llm_model),
         str(settings.vllm_dtype or "auto"),
@@ -25,6 +25,7 @@ def _engine_cache_key(settings: Settings) -> tuple[str, str, str, str, float, in
         str(settings.vllm_load_format or "auto"),
         float(settings.vllm_gpu_memory_utilization or 0.82),
         int(settings.vllm_max_model_len or 2048),
+        float(settings.vllm_cpu_offload_gb or 0.0),
         bool(settings.vllm_trust_remote_code),
         bool(settings.vllm_enforce_eager),
     )
@@ -86,13 +87,14 @@ def _load_vllm_engine(settings: Settings) -> Any:
             "`pip install -r requirements-models.txt`."
         ) from exc
 
-    model_id, dtype, quantization, load_format, gpu_memory_utilization, max_model_len, trust_remote_code, enforce_eager = key
+    model_id, dtype, quantization, load_format, gpu_memory_utilization, max_model_len, cpu_offload_gb, trust_remote_code, enforce_eager = key
     llm_kwargs: dict[str, Any] = {
         "model": model_id,
         "dtype": dtype,
         "load_format": load_format,
         "gpu_memory_utilization": gpu_memory_utilization,
         "max_model_len": max_model_len,
+        "cpu_offload_gb": cpu_offload_gb,
         "trust_remote_code": trust_remote_code,
         "enforce_eager": enforce_eager,
     }
@@ -113,6 +115,7 @@ def ensure_vllm_model(settings: Settings) -> dict[str, object]:
         "quantization": settings.vllm_quantization,
         "load_format": settings.vllm_load_format,
         "max_model_len": settings.vllm_max_model_len,
+        "cpu_offload_gb": settings.vllm_cpu_offload_gb,
         "enforce_eager": settings.vllm_enforce_eager,
     }
 
