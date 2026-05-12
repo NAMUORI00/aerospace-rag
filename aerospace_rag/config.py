@@ -55,8 +55,8 @@ class Settings:
     vllm_trust_remote_code: bool = False
     vllm_enforce_eager: bool = True
     vllm_use_v1: bool = True
-    llm_answer_max_tokens: int = 1024
-    llm_extract_max_tokens: int = 768
+    llm_answer_max_tokens: int = 256
+    llm_extract_max_tokens: int = 256
     extractor_backend: str = "vllm"
     fusion_mode: str = "hybrid"
     fusion_profile_path: str = ""
@@ -92,8 +92,8 @@ class Settings:
             vllm_trust_remote_code=_env_bool("AEROSPACE_VLLM_TRUST_REMOTE_CODE", False),
             vllm_enforce_eager=_env_bool("AEROSPACE_VLLM_ENFORCE_EAGER", True),
             vllm_use_v1=_env_bool("AEROSPACE_VLLM_USE_V1", True),
-            llm_answer_max_tokens=_env_int("LLM_ANSWER_MAX_TOKENS", 1024),
-            llm_extract_max_tokens=_env_int("LLM_EXTRACT_MAX_TOKENS", 768),
+            llm_answer_max_tokens=_env_int("LLM_ANSWER_MAX_TOKENS", 256),
+            llm_extract_max_tokens=_env_int("LLM_EXTRACT_MAX_TOKENS", 256),
             extractor_backend=os.environ.get("EXTRACTOR_LLM_BACKEND", os.environ.get("AEROSPACE_EXTRACTOR_BACKEND", "vllm")),
             fusion_mode=os.environ.get("AEROSPACE_FUSION_MODE", "hybrid"),
             fusion_profile_path=os.environ.get("AEROSPACE_FUSION_PROFILE_PATH", ""),
