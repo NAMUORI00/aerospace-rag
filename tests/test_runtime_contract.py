@@ -32,6 +32,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(settings.vllm_cpu_offload_gb, 0.0)
         self.assertTrue(settings.vllm_enforce_eager)
         self.assertFalse(settings.vllm_use_v1)
+        self.assertEqual(settings.vllm_generation_timeout_seconds, 45)
         self.assertEqual(settings.llm_answer_max_tokens, 128)
         self.assertEqual(settings.llm_extract_max_tokens, 128)
         self.assertEqual(settings.knowledge_extract_retries, 1)
@@ -61,6 +62,7 @@ class RuntimeContractTests(unittest.TestCase):
                 "AEROSPACE_VLLM_ENFORCE_EAGER": "false",
                 "AEROSPACE_VLLM_USE_V1": "false",
                 "AEROSPACE_VLLM_FALLBACK_ON_ERROR": "false",
+                "AEROSPACE_VLLM_GENERATION_TIMEOUT_SECONDS": "12",
                 "LLM_ANSWER_MAX_TOKENS": "321",
                 "LLM_EXTRACT_MAX_TOKENS": "222",
                 "KNOWLEDGE_EXTRACT_RETRIES": "2",
@@ -84,6 +86,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertFalse(settings.vllm_enforce_eager)
         self.assertFalse(settings.vllm_use_v1)
         self.assertFalse(settings.vllm_fallback_on_error)
+        self.assertEqual(settings.vllm_generation_timeout_seconds, 12)
         self.assertEqual(settings.llm_answer_max_tokens, 321)
         self.assertEqual(settings.llm_extract_max_tokens, 222)
         self.assertEqual(settings.knowledge_extract_retries, 2)
@@ -115,6 +118,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertTrue(settings.vllm_enforce_eager)
         self.assertFalse(settings.vllm_use_v1)
         self.assertTrue(settings.vllm_fallback_on_error)
+        self.assertEqual(settings.vllm_generation_timeout_seconds, 45)
 
     def test_embedding_service_keeps_explicit_hash_debug_mode(self) -> None:
         settings = Settings(embed_backend="hash", embed_dim=384)

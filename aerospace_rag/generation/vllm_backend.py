@@ -3,7 +3,9 @@ from __future__ import annotations
 import contextlib
 import builtins
 import os
+import signal
 import sys
+import threading
 from collections.abc import Iterator
 from typing import Any
 
@@ -90,6 +92,33 @@ def _vllm_initialization_stdio() -> Iterator[None]:
             fallback_stdout.close()
         if fallback_stderr is not None:
             fallback_stderr.close()
+
+
+@contextlib.contextmanager
+def _vllm_generation_timeout(seconds: int | float | None) -> Iterator[None]:
+    timeout_seconds = int(seconds or 0)
+    if (
+        timeout_seconds <= 0
+        or os.name == "nt"
+        or threading.current_thread() is not threading.main_thread()
+        or not hasattr(signal, "SIGALRM")
+    ):
+        yield
+        return
+
+    def _raise_timeout(_signum: int, _frame: object) -> None:
+        raise TimeoutError(f"vLLM generation exceeded {timeout_seconds} seconds.")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
 def _load_vllm_engine(settings: Settings) -> Any:
@@ -188,10 +217,11 @@ def generate_vllm_chat(
 ) -> str:
     engine = _load_vllm_engine(settings)
     sampling_params = _sampling_params(max_tokens=max_tokens, json_schema=json_schema)
-    try:
-        outputs = engine.generate([_messages_to_prompt(messages)], sampling_params=sampling_params, use_tqdm=False)
-    except Exception:
-        outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
+    with _vllm_generation_timeout(settings.vllm_generation_timeout_seconds):
+        try:
+            outputs = engine.generate([_messages_to_prompt(messages)], sampling_params=sampling_params, use_tqdm=False)
+        except Exception:
+            outputs = engine.chat([messages], sampling_params=sampling_params, use_tqdm=False)
     answer = _first_text(outputs)
     if not answer:
         raise RuntimeError("vLLM model returned an empty response.")
