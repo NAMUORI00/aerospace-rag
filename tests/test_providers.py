@@ -93,6 +93,33 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("근거 기반 답변", answer)
         self.assertIn("NASA awarded Momentus", answer)
 
+    def test_answer_reports_missing_specific_table_evidence_before_generation(self) -> None:
+        chunk = Chunk(
+            chunk_id="price#1",
+            text=(
+                "| 구분 | 위성/모드 | 저장영상(AO) | 신규촬영(NTO) |\n"
+                "| --- | --- | --- | --- |\n"
+                "| SAR | WS mock | $400 | $1,400 |"
+            ),
+            source_file="위성영상가격.png",
+            modality="table",
+        )
+        hit = RetrievalHit(chunk=chunk, score=1.0, channels={"qdrant": 1.0})
+
+        with patch.object(provider_module, "generate_vllm_chat") as generate:
+            answer = provider_module.generate_answer(
+                question="SAR ST(ES)는 신규촬영 $1,800이 맞아?",
+                hits=[hit],
+                provider="vllm",
+                settings=Settings(vllm_fallback_on_error=True),
+            )
+
+        self.assertIn("근거", answer)
+        self.assertIn("찾을 수 없어", answer)
+        self.assertIn("ST(ES)", answer)
+        self.assertIn("1,800", answer)
+        generate.assert_not_called()
+
     def test_vllm_provider_can_disable_generation_fallback(self) -> None:
         chunk = Chunk("text#1", "NASA awarded Momentus a solar sail contract.", "memo.txt", "text")
         hit = RetrievalHit(chunk=chunk, score=1.0, channels={"bm25": 1.0})
