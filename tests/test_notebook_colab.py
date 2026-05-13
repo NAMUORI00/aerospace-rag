@@ -98,15 +98,15 @@ class NotebookColabTests(unittest.TestCase):
         self.assertIn("INDEX_ARTIFACTS", source)
         self.assertIn("Missing index artifacts", source)
         self.assertIn("LocalIndex", source)
-        self.assertIn("ACTUAL_RAG_QUESTIONS", source)
+        self.assertIn("REGRESSION_QUESTIONS", source)
+        self.assertIn("SAR ST(ES)는 신규촬영 $1,800이 맞아?", source)
+        self.assertIn("찾을 수 없어", source)
         self.assertIn("display(Markdown(format_answer_markdown(response)))", source)
         self.assertIn("display(Markdown(format_sources_markdown(response.sources)))", source)
-        self.assertIn("display(HTML(format_results_table(SAMPLE_RESULTS", source)
-        self.assertIn("display(HTML(format_results_table(ACTUAL_RAG_RESULTS", source)
+        self.assertIn("display(HTML(format_results_table(", source)
         self.assertIn("RETRIEVAL_DEBUG_JSON_START", code_source)
         self.assertIn("ANSWER_DEBUG_JSON_START", code_source)
-        self.assertIn("SAMPLE_RESULTS_JSON_START", code_source)
-        self.assertIn("ACTUAL_RAG_RESULTS_JSON_START", code_source)
+        self.assertIn("REGRESSION_RESULTS_JSON_START", code_source)
         self.assertIn('"sources": [asdict(source) for source in r.sources]', code_source)
         self.assertNotIn("print(response.answer)", source)
         self.assertNotIn("print(json.dumps(response.diagnostics", source)
@@ -140,8 +140,7 @@ class NotebookColabTests(unittest.TestCase):
                 "## 9. 검색 단독 검증",
                 "## 10. LLM 답변 생성",
                 "## 11. 근거 확인",
-                "## 12. 반복 질문 예시",
-                "## 13. 실제 업무파일 RAG 검증",
+                "## 12. 최종 회귀 검증",
             ],
         )
 
