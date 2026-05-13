@@ -61,8 +61,12 @@ class IngestionTests(unittest.TestCase):
 
         self.assertEqual(len(chunks), 1)
         self.assertEqual(chunks[0].modality, "table")
-        self.assertIn("\n| EO | K3 |", chunks[0].text)
-        self.assertIn("\n메모:", chunks[0].text)
+        self.assertIn("\n| EO | K3 mock | $2,000 | $4,000 |", chunks[0].text)
+        self.assertIn("\n| EO | K3A mock | $1,300 | $3,000 |", chunks[0].text)
+        self.assertIn("\n| SAR | HR mock | $900 | $2,800 |", chunks[0].text)
+        self.assertIn("\n| SAR | WS mock | $400 | $1,400 |", chunks[0].text)
+        self.assertNotIn("ST(ES)", chunks[0].text)
+        self.assertNotIn("환율", chunks[0].text)
 
     @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
     def test_ingest_data_creates_expected_modalities_and_metadata(self) -> None:
@@ -77,7 +81,7 @@ class IngestionTests(unittest.TestCase):
         self.assertIn("table", modalities)
         self.assertTrue(any(chunk.page == 1 for chunk in chunks if chunk.source_file.endswith(".pdf")))
         self.assertTrue(any(chunk.sheet == "Sheet1" and chunk.row == 2 for chunk in chunks))
-        self.assertTrue(any("K3A" in chunk.text and "신규촬영" in chunk.text for chunk in chunks))
+        self.assertTrue(any("K3A mock" in chunk.text and "$3,000" in chunk.text for chunk in chunks))
         self.assertTrue(any("NASA" in chunk.text and "Momentus" in chunk.text for chunk in chunks))
 
 

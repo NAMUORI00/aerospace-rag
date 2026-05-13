@@ -21,16 +21,12 @@ SUPPORTED_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".xlsm", ".png", ".jpg"
 IGNORED_DATA_DIR_NAMES = {"index", ".ipynb_checkpoints", "__pycache__"}
 
 
-SATELLITE_PRICE_TABLE = """| 구분 | 위성/모드 | 해상도(m) | 저장영상(AO) | 신규촬영(NTO) |
-| --- | --- | ---: | --- | --- |
-| EO | K2 | 1 | 15 x 15 scene, $900, 1,260,000원 | 신규촬영 없음 |
-| EO | K3 | 0.7 | 16 x 16 scene, $2,048, 2,867,200원, km^2 $8 | 16 x 16 scene, $4,096, 5,734,400원, km^2 $16 |
-| EO | K3A | 0.55 | 13 x 13 scene, $1,352, 1,892,800원, km^2 $8 | 13 x 13 scene, $3,042, 4,258,800원, km^2 $18 |
-| SAR | HR(UH) | 1(0.85) | 5 x 5 scene, $900, 1,260,000원 | 5 x 5 scene, $2,800, 3,920,000원 |
-| SAR | ST(ES) | 3(2.5) | 30 x 30 scene, $600, 840,000원 | 30 x 30 scene, $1,800, 2,520,000원 |
-| SAR | WS | 20 | 100 x 100 scene, $400, 560,000원 | 100 x 100 scene, $1,400, 1,960,000원 |
-
-메모: 환율 1400원 기준. tile 판매 시 주문 최소크기 10 x 10. 스테레오 촬영은 scene을 2장 붙인 것으로 가격도 2배."""
+SATELLITE_PRICE_TABLE = """| 구분 | 위성/모드 | 저장영상(AO) | 신규촬영(NTO) |
+| --- | --- | --- | --- |
+| EO | K3 mock | $2,000 | $4,000 |
+| EO | K3A mock | $1,300 | $3,000 |
+| SAR | HR mock | $900 | $2,800 |
+| SAR | WS mock | $400 | $1,400 |"""
 
 
 GOVERNMENT_AEROSPACE_TABLE = """| 항목 | 미국 | 러시아 | 유럽 | 중국 | 일본 | 인도 | 한국 |
