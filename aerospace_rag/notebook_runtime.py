@@ -291,11 +291,16 @@ def build_response_row(question: str, response: QueryResponse, *, case: int | No
         if source.source_file not in source_files:
             source_files.append(source.source_file)
     channels = response.diagnostics.get("channels")
+    relevance_filter = response.diagnostics.get("relevance_filter")
+    relevance_removed = "-"
+    if isinstance(relevance_filter, Mapping):
+        relevance_removed = int(relevance_filter.get("removed") or 0)
     row: dict[str, object] = {
         "question": question,
         "summary": _summarize_answer_for_table(response.answer, max_chars=220),
         "provider": response.routing.get("provider") or response.diagnostics.get("provider") or "-",
         "source_count": len(response.sources),
+        "relevance_removed": relevance_removed,
         "channels": ", ".join(str(channel) for channel in channels) if isinstance(channels, list) else "-",
         "top_source": response.sources[0].source_file if response.sources else "-",
         "top_score": round(response.sources[0].score, 4) if response.sources else "-",
@@ -312,6 +317,7 @@ NOTEBOOK_COLUMN_LABELS = {
     "summary": "Answer Summary",
     "provider": "Provider",
     "source_count": "Sources",
+    "relevance_removed": "Filtered Out",
     "channels": "Channels",
     "top_source": "Top Source",
     "top_score": "Top Score",

@@ -118,19 +118,24 @@ class NotebookRuntimeTests(unittest.TestCase):
                 SourceRef("doc#3", "beta.pdf", "text", 0.5, "C"),
             ],
             routing={"provider": "vllm"},
-            diagnostics={"channels": ["bm25", "graph"]},
+            diagnostics={"channels": ["bm25", "graph"], "relevance_filter": {"removed": 2}},
         )
 
         row = notebook_runtime.build_response_row("무슨 질문인가?", response, case=2)
-        table = notebook_runtime.format_results_table([row], columns=["case", "question", "summary", "top_source", "source_files"])
+        table = notebook_runtime.format_results_table(
+            [row],
+            columns=["case", "question", "summary", "top_source", "relevance_removed", "source_files"],
+        )
 
         self.assertEqual(row["case"], 2)
         self.assertEqual(row["provider"], "vllm")
         self.assertEqual(row["top_source"], "alpha.pdf")
+        self.assertEqual(row["relevance_removed"], 2)
         self.assertEqual(row["source_files"], "alpha.pdf, beta.pdf")
         self.assertIn("첫 문장입니다.", row["summary"])
         self.assertNotIn("\n", row["summary"])
         self.assertIn("<table", table)
+        self.assertIn("Filtered Out", table)
         self.assertIn("무슨 질문인가?", table)
         self.assertIn("alpha.pdf, beta.pdf", table)
 

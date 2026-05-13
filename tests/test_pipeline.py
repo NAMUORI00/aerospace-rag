@@ -59,6 +59,40 @@ class AerospacePipelineTests(unittest.TestCase):
             self.assertIn("저장영상", response.answer)
             self.assertIn("신규촬영", response.answer)
 
+    @unittest.skipUnless(has_private_dataset(), "private data files are not tracked in the public repo")
+    def test_query_sources_are_filtered_to_question_relevant_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            index_dir = Path(tmp) / "index"
+            settings = self._test_settings()
+            build_index(data_dir=DATA_DIR, index_dir=index_dir, reset=True, settings=settings)
+
+            h3_response = ask(
+                "H3 8호기 발사 경과의 핵심 내용은 무엇인가?",
+                index_dir=index_dir,
+                top_k=5,
+                provider="extractive",
+                debug=True,
+                settings=settings,
+            )
+            h3_sources = {source.source_file for source in h3_response.sources}
+
+            self.assertIn("251222_H3 8호기 발사 경과.pdf", h3_sources)
+            self.assertIn("인공위성_질문응답.xlsx", h3_sources)
+            self.assertNotIn("해외정부 우주항공 현황.png", h3_sources)
+            self.assertNotIn("위성영상가격.png", h3_sources)
+
+            sales_response = ask(
+                "인공위성 판매대행사 선정 절차는?",
+                index_dir=index_dir,
+                top_k=5,
+                provider="extractive",
+                debug=True,
+                settings=settings,
+            )
+            sales_sources = {(source.source_file, source.row) for source in sales_response.sources}
+
+            self.assertEqual(sales_sources, {("인공위성_질문응답.xlsx", 5)})
+
 
 if __name__ == "__main__":
     unittest.main()

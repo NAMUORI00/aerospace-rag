@@ -29,6 +29,20 @@ def _chunk_search_text(chunk: Chunk) -> str:
     )
 
 
+def _chunk_relevance_text(chunk: Chunk) -> str:
+    metadata = chunk.metadata or {}
+    return "\n".join(
+        part
+        for part in [
+            chunk.text,
+            str(metadata.get("title") or ""),
+            str(metadata.get("category") or ""),
+            str(metadata.get("keywords") or ""),
+        ]
+        if part
+    )
+
+
 def _lexical_rerank_bonus(query: str, chunk: Chunk | None) -> float:
     if chunk is None:
         return 0.0
@@ -41,6 +55,26 @@ def _lexical_rerank_bonus(query: str, chunk: Chunk | None) -> float:
         return 0.0
     coverage = len(overlap) / max(1, len(query_tokens))
     return min(0.008, 0.012 * coverage)
+
+
+def _relevance_gate(query: str, chunk: Chunk | None) -> tuple[bool, dict[str, object]]:
+    if chunk is None:
+        return False, {"overlap_count": 0, "coverage": 0.0}
+    query_tokens = set(tokenize(query))
+    if not query_tokens:
+        return True, {"overlap_count": 0, "coverage": 1.0}
+    chunk_tokens = set(tokenize(_chunk_relevance_text(chunk)))
+    overlap = query_tokens & chunk_tokens
+    coverage = len(overlap) / max(1, len(query_tokens))
+    if len(query_tokens) <= 2:
+        keep = bool(overlap)
+    else:
+        keep = len(overlap) >= 2 and (coverage >= 0.12 or len(overlap) >= 4)
+    return keep, {
+        "overlap_count": len(overlap),
+        "coverage": round(coverage, 4),
+        "overlap_sample": sorted(overlap)[:12],
+    }
 
 
 def write_chunks(chunks: list[Chunk], path: str | Path) -> None:
@@ -171,6 +205,17 @@ class LocalIndex:
             if rerank_adjustments:
                 ranked = sorted(adjusted_ranked, key=lambda hit: hit.score, reverse=True)
                 fusion_debug["rerank_adjustments"] = {"lexical_coverage": rerank_adjustments}
+        filtered_ranked: list[ChannelHit] = []
+        filtered_out: dict[str, dict[str, object]] = {}
+        relevance_debug: dict[str, dict[str, object]] = {}
+        for ranked_hit in ranked:
+            keep, details = _relevance_gate(query, chunks.get(ranked_hit.chunk_id))
+            relevance_debug[ranked_hit.chunk_id] = details
+            if keep:
+                filtered_ranked.append(ranked_hit)
+            else:
+                filtered_out[ranked_hit.chunk_id] = details
+        ranked = filtered_ranked
         hits: list[RetrievalHit] = []
         for ranked_hit in ranked:
             chunk = chunks.get(ranked_hit.chunk_id)
@@ -193,6 +238,12 @@ class LocalIndex:
                 "channel_enabled": {channel: bool(scores) for channel, scores in channel_scores.items()},
                 **fusion_debug,
                 **weight_diag,
+            },
+            "relevance_filter": {
+                "kept": len(ranked),
+                "removed": len(filtered_out),
+                "removed_chunks": filtered_out,
+                "candidates": relevance_debug,
             },
             "embedding_provider": self._last_embedding_provider,
             "embedding_model": self.settings.embed_model,
