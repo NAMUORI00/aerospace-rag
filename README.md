@@ -6,7 +6,7 @@
 
 ## 구현 목표
 
-이 프로젝트는 [NAMUORI00/smartfarm-workspace](https://github.com/NAMUORI00/smartfarm-workspace)의 Dense/Sparse/Graph 3채널 RAG 아이디어를 항공우주 문서와 Colab T4 데모 환경에 맞게 축소한 포팅판입니다.
+이 프로젝트는 [NAMUORI00/smartfarm-adaptive-rag](https://github.com/NAMUORI00/smartfarm-adaptive-rag)의 Dense/Sparse/Graph 3채널 RAG 아이디어를 항공우주 문서와 Colab T4 데모 환경에 맞게 축소한 포팅판입니다.
 
 유지한 핵심 개념은 dense 검색, sparse/BM25 검색, graph 기반 보강, weighted RRF 결합, 근거 중심 답변, 진단 가능한 실행 흐름입니다. 반대로 Docker compose, 장기 실행 서버, submodule 워크스페이스, FalkorDB 운영 구조는 제거하고 단일 Python 패키지와 파일 기반 인덱스로 단순화했습니다.
 
